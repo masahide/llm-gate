@@ -60,17 +60,13 @@ export async function runCurrentTimeTool(cfg: LmConfig) {
 }
 
 export async function queryLmStudioResponse(userMessage: string): Promise<string> {
-  const prompt = [
-    "あなたは親しみやすいアシスタント Suzume です。日本語で簡潔かつ礼儀正しく答えてください。",
-    "以下のユーザー要求に対して、具体的かつ前向きな応答を行ってください。",
-    `ユーザー: ${userMessage}`,
-    "回答:",
-  ].join("\n");
-
-  const response = await createResponse(cfg, prompt, {
+  const response = await createResponse(cfg, userMessage, {
     temperature: 0.2,
     maxOutputTokens: 350,
-    instructions: "日本語で直接的に答えてください。余計な説明は不要です。",
+    instructions: [
+    "あなたは親しみやすいアシスタント Suzume です。日本語で簡潔かつ礼儀正しく答えてください。",
+    "以下のユーザー要求に対して、具体的かつ前向きな応答を行ってください。",
+  ].join("\n"),
   });
   const result = extractOutputText(response).trim();
   return result || "少しお待ちください、確認しています。";
