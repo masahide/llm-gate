@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { extractOutputText } from "../src/lmstudio.js";
+import type { ResponsesResponse } from "../src/lmstudio.js";
 
 describe("extractOutputText", () => {
   test("merges output_text fragments into a single string", () => {
-    const payload = {
+    const payload: ResponsesResponse = {
       output: [
         {
           type: "message",

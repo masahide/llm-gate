@@ -1,5 +1,37 @@
-// src/lmstudio.ts
-export type ResponseJson = Record<string, any>;
+export type ResponseOutputTextItem = {
+  type: "output_text";
+  text: string;
+};
+
+export type ResponseMessageOutput = {
+  type: "message";
+  content: Array<ResponseOutputTextItem>;
+};
+
+export type ResponseFunctionCall = {
+  type: "function_call";
+  name: string;
+  call_id?: string;
+  input?: string;
+};
+
+export type ResponseOutputItem = ResponseMessageOutput | ResponseFunctionCall;
+
+export type ResponsesResponse = {
+  id?: string;
+  output?: ResponseOutputItem[];
+  [key: string]: unknown;
+};
+
+export type ResponseInput = string | Record<string, unknown> | Array<Record<string, unknown>>;
+
+export type CreateResponseOptions = {
+  previousResponseId?: string | undefined;
+  temperature?: number | undefined;
+  instructions?: string | undefined;
+  maxOutputTokens?: number | undefined;
+  tools?: unknown[] | undefined;
+};
 
 export type LmConfig = {
   baseUrl: string;
@@ -7,7 +39,7 @@ export type LmConfig = {
   model: string;
 };
 
-export function extractOutputText(resp: ResponseJson): string {
+export function extractOutputText(resp: ResponsesResponse): string {
   const out = resp.output;
   if (!Array.isArray(out)) return "";
 
@@ -28,24 +60,20 @@ export function extractOutputText(resp: ResponseJson): string {
 
 export async function createResponse(
   cfg: LmConfig,
-  input: string,
-  opts?: {
-    previousResponseId?: string;
-    temperature?: number;
-    instructions?: string;
-    maxOutputTokens?: number;
-  }
-): Promise<ResponseJson> {
-  const body: Record<string, any> = {
+  input: ResponseInput,
+  opts: CreateResponseOptions = {}
+): Promise<ResponsesResponse> {
+  const body: Record<string, unknown> = {
     model: cfg.model,
-    input,
-    // ここが重要
-    max_output_tokens: opts?.maxOutputTokens ?? 1024,
+    max_output_tokens: opts.maxOutputTokens ?? 1024,
   };
 
-  if (opts?.previousResponseId) body.previous_response_id = opts.previousResponseId;
-  if (typeof opts?.temperature === "number") body.temperature = opts.temperature;
-  if (opts?.instructions) body.instructions = opts.instructions;
+  body.input = input;
+
+  if (opts.previousResponseId) body.previous_response_id = opts.previousResponseId;
+  if (typeof opts.temperature === "number") body.temperature = opts.temperature;
+  if (opts.instructions) body.instructions = opts.instructions;
+  if (Array.isArray(opts.tools) && opts.tools.length) body.tools = opts.tools;
 
   const res = await fetch(`${cfg.baseUrl}/responses`, {
     method: "POST",
@@ -61,5 +89,5 @@ export async function createResponse(
     throw new Error(`HTTP ${res.status} ${res.statusText}\n${text}`);
   }
 
-  return (await res.json()) as ResponseJson;
+  return (await res.json()) as ResponsesResponse;
 }
