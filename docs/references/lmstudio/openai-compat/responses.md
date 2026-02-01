@@ -1,4 +1,3 @@
-
 - Method: `POST`
 - See OpenAI docs: https://platform.openai.com/docs/api-reference/responses
 

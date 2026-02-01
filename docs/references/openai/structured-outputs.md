@@ -1,5 +1,4 @@
-Structured model outputs
-========================
+# Structured model outputs
 
 Ensure text responses from the model adhere to a JSON schema you define.
 
@@ -79,7 +78,7 @@ Structured Outputs is available in our [latest large language models](https://pl
 
 When to use Structured Outputs via function calling vs via text.format
 
---------------------------------------------------------------------------
+---
 
 Structured Outputs is available in two forms in the OpenAI API:
 
@@ -96,7 +95,7 @@ For example, if you are building a math tutoring application, you might want the
 
 Put simply:
 
-*   If you are connecting the model to tools, functions, data, etc. in your system, then you should use function calling - If you want to structure the model's output when it responds to the user, then you should use a structured `text.format`
+- If you are connecting the model to tools, functions, data, etc. in your system, then you should use function calling - If you want to structure the model's output when it responds to the user, then you should use a structured `text.format`
 
 The remainder of this guide will focus on non-function calling use cases in the Responses API. To learn more about how to use Structured Outputs with function calling, check out the
 
@@ -116,15 +115,14 @@ We recommend always using Structured Outputs instead of JSON mode when possible.
 
 However, Structured Outputs with `response_format: {type: "json_schema", ...}` is only supported with the `gpt-4o-mini`, `gpt-4o-mini-2024-07-18`, and `gpt-4o-2024-08-06` model snapshots and later.
 
-||Structured Outputs|JSON Mode|
-|---|---|---|
-|Outputs valid JSON|Yes|Yes|
-|Adheres to schema|Yes (see supported schemas)|No|
-|Compatible models|gpt-4o-mini, gpt-4o-2024-08-06, and later|gpt-3.5-turbo, gpt-4-* and gpt-4o-* models|
-|Enabling|text: { format: { type: "json_schema", "strict": true, "schema": ... } }|text: { format: { type: "json_object" } }|
+|                    | Structured Outputs                                                       | JSON Mode                                  |
+| ------------------ | ------------------------------------------------------------------------ | ------------------------------------------ |
+| Outputs valid JSON | Yes                                                                      | Yes                                        |
+| Adheres to schema  | Yes (see supported schemas)                                              | No                                         |
+| Compatible models  | gpt-4o-mini, gpt-4o-2024-08-06, and later                                | gpt-3.5-turbo, gpt-4-_ and gpt-4o-_ models |
+| Enabling           | text: { format: { type: "json_schema", "strict": true, "schema": ... } } | text: { format: { type: "json_object" } }  |
 
-Examples
---------
+## Examples
 
 Chain of thought
 
@@ -778,8 +776,7 @@ curl https://api.openai.com/v1/responses \
 }
 ```
 
-How to use Structured Outputs with text.format
-----------------------------------------------
+## How to use Structured Outputs with text.format
 
 Step 1: Define your schema
 
@@ -791,9 +788,9 @@ While Structured Outputs supports much of JSON Schema, some features are unavail
 
 To maximize the quality of model generations, we recommend the following:
 
-*   Name keys clearly and intuitively
-*   Create clear titles and descriptions for important keys in your structure
-*   Create and use evals to determine the structure that works best for your use case
+- Name keys clearly and intuitively
+- Create clear titles and descriptions for important keys in your structure
+- Create and use evals to determine the structure that works best for your use case
 
 Step 2: Supply your schema in the API call
 
@@ -1177,8 +1174,7 @@ To prevent your JSON Schema and corresponding types in your programming language
 
 If you prefer to specify the JSON schema directly, you could add CI rules that flag when either the JSON schema or underlying data objects are edited, or add a CI step that auto-generates the JSON Schema from type definitions (or vice-versa).
 
-Streaming
----------
+## Streaming
 
 You can use streaming to process model responses or function call arguments as they are being generated, and parse them as structured data.
 
@@ -1265,8 +1261,7 @@ const result = await stream.finalResponse();
 console.log(result);
 ```
 
-Supported schemas
------------------
+## Supported schemas
 
 Structured Outputs supports a subset of the [JSON Schema](https://json-schema.org/docs) language.
 
@@ -1274,14 +1269,14 @@ Structured Outputs supports a subset of the [JSON Schema](https://json-schema.or
 
 The following types are supported for Structured Outputs:
 
-*   String
-*   Number
-*   Boolean
-*   Integer
-*   Object
-*   Array
-*   Enum
-*   anyOf
+- String
+- Number
+- Boolean
+- Integer
+- Object
+- Array
+- Enum
+- anyOf
 
 #### Supported properties
 
@@ -1289,30 +1284,30 @@ In addition to specifying the type of a property, you can specify a selection of
 
 **Supported `string` properties:**
 
-*   `pattern` — A regular expression that the string must match.
-*   `format` — Predefined formats for strings. Currently supported:
-    *   `date-time`
-    *   `time`
-    *   `date`
-    *   `duration`
-    *   `email`
-    *   `hostname`
-    *   `ipv4`
-    *   `ipv6`
-    *   `uuid`
+- `pattern` — A regular expression that the string must match.
+- `format` — Predefined formats for strings. Currently supported:
+  - `date-time`
+  - `time`
+  - `date`
+  - `duration`
+  - `email`
+  - `hostname`
+  - `ipv4`
+  - `ipv6`
+  - `uuid`
 
 **Supported `number` properties:**
 
-*   `multipleOf` — The number must be a multiple of this value.
-*   `maximum` — The number must be less than or equal to this value.
-*   `exclusiveMaximum` — The number must be less than this value.
-*   `minimum` — The number must be greater than or equal to this value.
-*   `exclusiveMinimum` — The number must be greater than this value.
+- `multipleOf` — The number must be a multiple of this value.
+- `maximum` — The number must be less than or equal to this value.
+- `exclusiveMaximum` — The number must be less than this value.
+- `minimum` — The number must be greater than or equal to this value.
+- `exclusiveMinimum` — The number must be greater than this value.
 
 **Supported `array` properties:**
 
-*   `minItems` — The array must have at least this many items.
-*   `maxItems` — The array must have at most this many items.
+- `minItems` — The array must have at least this many items.
+- `maxItems` — The array must have at most this many items.
 
 Here are some examples on how you can use these type restrictions:
 
@@ -1511,14 +1506,14 @@ When using Structured Outputs, outputs will be produced in the same order as the
 
 #### Some type-specific keywords are not yet supported
 
-*   **Composition:** `allOf`, `not`, `dependentRequired`, `dependentSchemas`, `if`, `then`, `else`
+- **Composition:** `allOf`, `not`, `dependentRequired`, `dependentSchemas`, `if`, `then`, `else`
 
 For fine-tuned models, we additionally do not support the following:
 
-*   **For strings:** `minLength`, `maxLength`, `pattern`, `format`
-*   **For numbers:** `minimum`, `maximum`, `multipleOf`
-*   **For objects:** `patternProperties`
-*   **For arrays:** `minItems`, `maxItems`
+- **For strings:** `minLength`, `maxLength`, `pattern`, `format`
+- **For numbers:** `minimum`, `maximum`, `multipleOf`
+- **For objects:** `patternProperties`
+- **For arrays:** `minItems`, `maxItems`
 
 If you turn on Structured Outputs by supplying `strict: true` and call the API with an unsupported JSON Schema, you will receive an error.
 
@@ -1725,8 +1720,7 @@ Sample recursive schema using explicit recursion:
 }
 ```
 
-JSON mode
----------
+## JSON mode
 
 JSON mode is a more basic version of the Structured Outputs feature. While JSON mode ensures that model output is valid JSON, Structured Outputs reliably matches the model's output to the schema you specify. We recommend you use Structured Outputs if it is supported for your use case.
 
@@ -1736,9 +1730,9 @@ To turn on JSON mode with the Responses API you can set the `text.format` to `{ 
 
 Important notes:
 
-*   When using JSON mode, you must always instruct the model to produce JSON via some message in the conversation, for example via your system message. If you don't include an explicit instruction to generate JSON, the model may generate an unending stream of whitespace and the request may run continually until it reaches the token limit. To help ensure you don't forget, the API will throw an error if the string "JSON" does not appear somewhere in the context.
-*   JSON mode will not guarantee the output matches any specific schema, only that it is valid and parses without errors. You should use Structured Outputs to ensure it matches your schema, or if that is not possible, you should use a validation library and potentially retries to ensure that the output matches your desired schema.
-*   Your application must detect and handle the edge cases that can result in the model output not being a complete JSON object (see below)
+- When using JSON mode, you must always instruct the model to produce JSON via some message in the conversation, for example via your system message. If you don't include an explicit instruction to generate JSON, the model may generate an unending stream of whitespace and the request may run continually until it reaches the token limit. To help ensure you don't forget, the API will throw an error if the string "JSON" does not appear somewhere in the context.
+- JSON mode will not guarantee the output matches any specific schema, only that it is valid and parses without errors. You should use Structured Outputs to ensure it matches your schema, or if that is not possible, you should use a validation library and potentially retries to ensure that the output matches your desired schema.
+- Your application must detect and handle the edge cases that can result in the model output not being a complete JSON object (see below)
 
 Handling edge cases
 
@@ -1836,10 +1830,9 @@ except Exception as e:
     print(e)
 ```
 
-Resources
----------
+## Resources
 
 To learn more about Structured Outputs, we recommend browsing the following resources:
 
-*   Check out our [introductory cookbook](https://cookbook.openai.com/examples/structured_outputs_intro) on Structured Outputs
-*   Learn [how to build multi-agent systems](https://cookbook.openai.com/examples/structured_outputs_multi_agent) with Structured Outputs
+- Check out our [introductory cookbook](https://cookbook.openai.com/examples/structured_outputs_intro) on Structured Outputs
+- Learn [how to build multi-agent systems](https://cookbook.openai.com/examples/structured_outputs_multi_agent) with Structured Outputs

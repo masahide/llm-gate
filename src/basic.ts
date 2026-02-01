@@ -56,7 +56,10 @@ async function main() {
   console.log(extractOutputText(r2));
 }
 
-function findToolCall(response: ResponsesResponse, toolName: string): ResponseFunctionCall | undefined {
+function findToolCall(
+  response: ResponsesResponse,
+  toolName: string
+): ResponseFunctionCall | undefined {
   return response.output?.find(
     (item): item is ResponseFunctionCall => item.type === "function_call" && item.name === toolName
   );
@@ -70,7 +73,8 @@ async function runCurrentTimeTool(cfg: LmConfig) {
   const initial = await createResponse(cfg, prompt, {
     temperature: 0.1,
     maxOutputTokens: 160,
-    instructions: "必要な情報は current_time ツールを使って取得し、ツールの出力だけを返信してください。",
+    instructions:
+      "必要な情報は current_time ツールを使って取得し、ツールの出力だけを返信してください。",
     tools: [currentTimeTool],
   });
 

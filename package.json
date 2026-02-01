@@ -7,8 +7,8 @@
   "scripts": {
     "check": "pnpm format:check && pnpm typecheck && pnpm test",
     "dev": "tsx src/basic.ts",
-    "format": "node scripts/format.mjs",
-    "format:check": "node scripts/check-format.mjs",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\" \"docs/**/*.md\" \"AGENTS.md\" \"README.md\" \"package.json\" \"tsconfig*.json\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\" \"docs/**/*.md\" \"AGENTS.md\" \"README.md\" \"package.json\" \"tsconfig*.json\"",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:watch": "vitest"
@@ -19,6 +19,7 @@
   "packageManager": "pnpm@10.20.0",
   "devDependencies": {
     "@types/node": "^25.1.0",
+    "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^0.34.0",
