@@ -9,8 +9,9 @@
     "dev": "tsx src/basic.ts",
     "format": "node scripts/format.mjs",
     "format:check": "node scripts/check-format.mjs",
-    "test": "tsx tests/lmstudio.test.ts",
-    "typecheck": "tsc --noEmit"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,8 @@
   "devDependencies": {
     "@types/node": "^25.1.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^0.34.0",
+    "zod": "^3.22.4"
   }
 }

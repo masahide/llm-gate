@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./.tmp/tests",
+    "rootDir": ".",
+    "module": "ESNext",
+    "moduleResolution": "NodeNext",
+    "sourceMap": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "declaration": false
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

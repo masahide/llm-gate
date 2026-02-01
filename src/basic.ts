@@ -1,4 +1,5 @@
 import { createResponse, extractOutputText } from "./lmstudio.js";
+import { structuredInstructions, parseStructuredText } from "./structured-output.js";
 
 const cfg = {
   baseUrl: process.env.LM_BASE_URL ?? "http://192.168.10.37:1234/v1",
@@ -7,11 +8,31 @@ const cfg = {
 };
 
 async function main() {
-  const r1 = await createResponse(cfg, "日本語で短く自己紹介して", {
+  const structuredPrompt = [
+    "日本語で短い自己紹介と、今日できる具体的なアクションを提示してください。",
+    "出力は必ず JSON で、以下のフォーマットに従ってください。",
+    structuredInstructions,
+    "JSON 以外の文章や説明は含めないでください。",
+  ].join("\n");
+
+  const r1 = await createResponse(cfg, structuredPrompt, {
     temperature: 0.1,
-    maxOutputTokens: 128,
+    maxOutputTokens: 256,
+    instructions: "JSON のみ出力。説明や箇条書きは不要。",
   });
-  console.log(extractOutputText(r1));
+
+  const structuredText = extractOutputText(r1);
+  console.log("生成された構造化出力:", structuredText);
+
+  const structuredResult = parseStructuredText(structuredText);
+  if (structuredResult.success) {
+    console.log("構造化結果:", structuredResult.data);
+  } else {
+    console.error("構造化出力の検証に失敗しました:", structuredResult.error);
+    if (structuredResult.issues) {
+      console.error("Zod の検証情報:", structuredResult.issues);
+    }
+  }
 
   const r2 = await createResponse(
     cfg,
