@@ -8,55 +8,13 @@ import {
   parseCurrentTimeParams,
 } from "./tools/current-time.js";
 
-const cfg: LmConfig = {
+export const cfg: LmConfig = {
   baseUrl: process.env.LM_BASE_URL ?? "http://192.168.10.37:1234/v1",
   apiKey: process.env.LM_API_KEY ?? "",
   model: process.env.LM_MODEL ?? "qwen/qwen3-vl-4b-instruct",
 };
 
-async function main() {
-  const structuredPrompt = [
-    "日本語で短い自己紹介と、今日できる具体的なアクションを提示してください。",
-    "出力は必ず JSON で、以下のフォーマットに従ってください。",
-    structuredInstructions,
-    "JSON 以外の文章や説明は含めないでください。",
-  ].join("\n");
-
-  const r1 = await createResponse(cfg, structuredPrompt, {
-    temperature: 0.1,
-    maxOutputTokens: 256,
-    instructions: "JSON のみ出力。説明や箇条書きは不要。",
-  });
-
-  const structuredText = extractOutputText(r1);
-  console.log("生成された構造化出力:", structuredText);
-
-  const structuredResult = parseStructuredText(structuredText);
-  if (structuredResult.success) {
-    console.log("構造化結果:", structuredResult.data);
-  } else {
-    console.error("構造化出力の検証に失敗しました:", structuredResult.error);
-    if (structuredResult.issues) {
-      console.error("Zod の検証情報:", structuredResult.issues);
-    }
-  }
-
-  await runCurrentTimeTool(cfg);
-
-  const r2 = await createResponse(
-    cfg,
-    "前の自己紹介文の末尾に10文字だけ追加した全文を1回だけ出力。2行目に追加した10文字だけを出力。説明は禁止。",
-    {
-      previousResponseId: r1.id,
-      temperature: 0.1,
-      maxOutputTokens: 128,
-      instructions: "繰り返し禁止。指定形式以外は出力しない。",
-    }
-  );
-  console.log(extractOutputText(r2));
-}
-
-function findToolCall(
+export function findToolCall(
   response: ResponsesResponse,
   toolName: string
 ): ResponseFunctionCall | undefined {
@@ -65,7 +23,7 @@ function findToolCall(
   );
 }
 
-async function runCurrentTimeTool(cfg: LmConfig) {
+export async function runCurrentTimeTool(cfg: LmConfig) {
   const prompt = `
 今の時刻を知る必要があるときは current_time ツールを呼び出してください。ツールに渡す JSON は { "timezone": "Asia/Tokyo" } などの形にしてください。
   `.trim();
@@ -101,7 +59,19 @@ async function runCurrentTimeTool(cfg: LmConfig) {
   console.log("current_time tool の返答:", extractOutputText(followUp));
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exitCode = 1;
-});
+export async function queryLmStudioResponse(userMessage: string): Promise<string> {
+  const prompt = [
+    "あなたは親しみやすいアシスタント Suzume です。日本語で簡潔かつ礼儀正しく答えてください。",
+    "以下のユーザー要求に対して、具体的かつ前向きな応答を行ってください。",
+    `ユーザー: ${userMessage}`,
+    "回答:",
+  ].join("\n");
+
+  const response = await createResponse(cfg, prompt, {
+    temperature: 0.2,
+    maxOutputTokens: 350,
+    instructions: "日本語で直接的に答えてください。余計な説明は不要です。",
+  });
+  const result = extractOutputText(response).trim();
+  return result || "少しお待ちください、確認しています。";
+}

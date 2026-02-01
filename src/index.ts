@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { Client, Events, GatewayIntentBits, Message } from "discord.js";
+import { queryLmStudioResponse } from "./basic.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -89,11 +90,19 @@ client.on(Events.MessageCreate, async (msg) => {
     return;
   }
 
+  let reply: string;
+  try {
+    const lmReply = await queryLmStudioResponse(body);
+    reply = lmReply || buildReply(body);
+  } catch (err) {
+    console.error("[bot error] LM Studio への問い合わせに失敗しました", err);
+    reply = buildReply(body);
+  }
+
   if (msg.channel.isTextBased()) {
     await msg.channel.sendTyping();
   }
 
-  const reply = buildReply(body);
   const chunks = reply.length <= 1800 ? [reply] : [reply.slice(0, 1800), reply.slice(1800)];
   for (const c of chunks) {
     await msg.reply(c);

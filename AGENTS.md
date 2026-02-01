@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-- `src/` に `basic.ts`（エントリポイント）、LM Studio 用 HTTP ラッパー (`lmstudio.ts`)、Zod による構造化出力パーサ (`structured-output.ts`)、`current_time` ツール定義 (`src/tools/current-time.ts`) を配置。
+- `src/` に `basic.ts`（LM Studio 対話/ツールヘルパー）、`basic-sample.ts`（構造化出力 + `current_time` ツールのサンプル）、LM Studio 用 HTTP ラッパー (`lmstudio.ts`)、Zod による構造化出力パーサ (`structured-output.ts`)、`current_time` ツール定義 (`src/tools/current-time.ts`) を配置。
 - `tests/` の `*.test.ts` は `vitest` が読み込む前提。追加するテストは `tests/` 直下に置き、`vitest.config.ts` で Node + `tsconfig.test.json` が設定済み。
 - `.prettierrc` でフォーマットルールを定義しており、成果物 `dist/` や一時生成物は `.gitignore` で排除。
 - 依存性は `package.json`/`pnpm-lock.yaml` で管理し、`node_modules/.pnpm` 以下に展開される。手で追加したい場合は `pnpm add -D` で `devDependencies` に寄せる。
@@ -10,7 +10,8 @@
 ## Build, Test, and Development Commands
 
 - `pnpm install`: `packageManager` を尊重して開発依存をインストール。
-- `pnpm dev`: `basic.ts` を `tsx` で起動し、構造化出力 → `current_time` ツール呼び出しの一連の Responses API シナリオをログで確認。
+- `pnpm dev`: `index.ts` を `tsx` で起動し、Discord bot を稼働させてメンションに反応する。
+- `pnpm sample`: `basic-sample.ts` を `tsx` で起動し、構造化出力 + `current_time` ツールのデモを手元で再現する。
 - `pnpm format`: Prettier (`.prettierrc`) で `src`/`tests`/`docs`/設定ファイルを整形。
 - `pnpm format:check`: 同じファイル群に対して Prettier の `--check` を走らせ、違反を検出。
 - `pnpm typecheck`: `tsc --noEmit` で型チェック。
