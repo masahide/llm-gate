@@ -15,6 +15,7 @@
 - `pnpm test`: `vitest run` がユニットテストを実行（`tests/**/*.test.ts` を Node で走らせ、構造化出力やレスポンスの挙動を検証）。
 - `pnpm test:watch`: ソース変更で自動再実行。
 - `pnpm check`: `format:check` → `typecheck` → `test` で品質を一括確認。
+- ソースコード編集後はまず `pnpm check` を走らせ、フォーマット・型チェック・テストがすべて通るまで修正してください。
 
 ## Coding Style & Naming Conventions
 - TypeScript は `tsconfig.json` で `ES2022` + `NodeNext`。インデント 2 スペース、モジュール/関数は `camelCase` で、ファイル名は小文字スネーク・キャメル混在にせず統一。
