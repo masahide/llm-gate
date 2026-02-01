@@ -11,6 +11,9 @@ describe("parseStructuredText", () => {
 
     const result = parseStructuredText(json);
     expect(result.success).toBe(true);
+    if (!result.success) {
+      throw new Error("parseStructuredText: expected success but got failure");
+    }
     expect(result).toMatchObject({
       success: true,
       data: { tone: "calm" },
