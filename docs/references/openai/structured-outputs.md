@@ -1052,7 +1052,7 @@ except Exception as e:
     pass
 ```
 
-### 
+###
 
 Refusals with Structured Outputs
 
@@ -1155,7 +1155,7 @@ The API response from a refusal will look something like this:
 }
 ```
 
-### 
+###
 
 Tips and best practices
 
@@ -1758,7 +1758,7 @@ try {
     text: { format: { type: "json_object" } },
   });
 
-  // Check if the conversation was too long for the context window, resulting in incomplete JSON 
+  // Check if the conversation was too long for the context window, resulting in incomplete JSON
   if (response.status === "incomplete" && response.incomplete_details.reason === "max_output_tokens") {
     // your code should handle this error case
   }
@@ -1805,7 +1805,7 @@ try:
         text={"format": {"type": "json_object"}}
     )
 
-    # Check if the conversation was too long for the context window, resulting in incomplete JSON 
+    # Check if the conversation was too long for the context window, resulting in incomplete JSON
     if response.status == "incomplete" and response.incomplete_details.reason == "max_output_tokens":
         # your code should handle this error case
         pass

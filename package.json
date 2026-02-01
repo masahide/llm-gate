@@ -2,10 +2,15 @@
   "name": "llm-gate",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx src/basic.ts"
+    "check": "pnpm format:check && pnpm typecheck && pnpm test",
+    "dev": "tsx src/basic.ts",
+    "format": "node scripts/format.mjs",
+    "format:check": "node scripts/check-format.mjs",
+    "test": "tsx tests/lmstudio.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",

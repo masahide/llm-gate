@@ -2,16 +2,12 @@
 export type ResponseJson = Record<string, any>;
 
 export type LmConfig = {
-  baseUrl: string; // 末尾 /v1 まで含める
+  baseUrl: string;
   apiKey?: string;
   model: string;
 };
 
 export function extractOutputText(resp: ResponseJson): string {
-  if (typeof resp.output_text === "string" && resp.output_text.length > 0) {
-    return resp.output_text;
-  }
-
   const out = resp.output;
   if (!Array.isArray(out)) return "";
 
@@ -37,11 +33,14 @@ export async function createResponse(
     previousResponseId?: string;
     temperature?: number;
     instructions?: string;
+    maxOutputTokens?: number;
   }
 ): Promise<ResponseJson> {
   const body: Record<string, any> = {
     model: cfg.model,
     input,
+    // ここが重要
+    max_output_tokens: opts?.maxOutputTokens ?? 1024,
   };
 
   if (opts?.previousResponseId) body.previous_response_id = opts.previousResponseId;

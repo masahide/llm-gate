@@ -1,55 +1,29 @@
-const BASE_URL = process.env.LM_BASE_URL ?? "http://192.168.10.37:1234/v1";
-const MODEL = process.env.LM_MODEL ?? "qwen/qwen3-vl-4b-instruct";
+import { createResponse, extractOutputText } from "./lmstudio.js";
 
-// LM Studio は通常 API キー不要ですが、構成によっては必要なことがあります。
-// 必要なら LM_API_KEY を設定してください。
-const API_KEY = process.env.LM_API_KEY ?? "";
-
-type AnyJson = Record<string, any>;
-
-function extractOutputText(resp: AnyJson): string {
-  const out = resp.output;
-  if (!Array.isArray(out)) return "";
-
-  const chunks: string[] = [];
-  for (const item of out) {
-    if (item?.type !== "message") continue;
-    const content = item?.content;
-    if (!Array.isArray(content)) continue;
-
-    for (const c of content) {
-      if (c?.type === "output_text" && typeof c?.text === "string") {
-        chunks.push(c.text);
-      }
-    }
-  }
-  return chunks.join("");
-}
+const cfg = {
+  baseUrl: process.env.LM_BASE_URL ?? "http://192.168.10.37:1234/v1",
+  apiKey: process.env.LM_API_KEY ?? "",
+  model: process.env.LM_MODEL ?? "qwen/qwen3-vl-4b-instruct",
+};
 
 async function main() {
-  const body = {
-    model: MODEL,
-    input: "日本語で短く、今日できることを3つ提案して",
+  const r1 = await createResponse(cfg, "日本語で短く自己紹介して", {
     temperature: 0.1,
-  };
-
-  const res = await fetch(`${BASE_URL}/responses`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
-    },
-    body: JSON.stringify(body),
+    maxOutputTokens: 128,
   });
+  console.log(extractOutputText(r1));
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HTTP ${res.status} ${res.statusText}\n${text}`);
-  }
-
-  const json = (await res.json()) as AnyJson;
-  const text = extractOutputText(json);
-  console.log(text || JSON.stringify(json, null, 2));
+  const r2 = await createResponse(
+    cfg,
+    "前の自己紹介文の末尾に10文字だけ追加した全文を1回だけ出力。2行目に追加した10文字だけを出力。説明は禁止。",
+    {
+      previousResponseId: r1.id,
+      temperature: 0.1,
+      maxOutputTokens: 128,
+      instructions: "繰り返し禁止。指定形式以外は出力しない。",
+    }
+  );
+  console.log(extractOutputText(r2));
 }
 
 main().catch((e) => {
