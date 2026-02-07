@@ -1,4 +1,4 @@
-const DEFAULT_ASSISTANT_NAME = "Suzume";
+const DEFAULT_ASSISTANT_NAME = "Assistant";
 
 function normalizeName(value: string): string {
   return value.trim().replace(/\s+/g, " ");

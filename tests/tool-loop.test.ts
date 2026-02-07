@@ -39,7 +39,10 @@ vi.mock("../src/lmstudio.js", () => ({
 }));
 
 vi.mock("../src/tools/web-research-digest.js", async () => {
-  const actual = await vi.importActual("../src/tools/web-research-digest.js");
+  const actual = (await vi.importActual("../src/tools/web-research-digest.js")) as Record<
+    string,
+    unknown
+  >;
   return {
     ...actual,
     runWebResearchDigest: webResearchMocks.runWebResearchDigest,
@@ -95,5 +98,29 @@ describe("queryLmStudioResponseWithTools", () => {
     const out = await queryLmStudioResponseWithTools("loop", { maxLoops: 2 });
     expect(out).toBe("調査に時間がかかっています。もう一度試してください。");
     expect(lmMocks.createResponse).toHaveBeenCalledTimes(3);
+  });
+
+  test("forces current_time tool call for time question before final answer", async () => {
+    lmMocks.createResponse
+      .mockResolvedValueOnce({
+        id: "r1",
+        output: [{ type: "message", content: [{ type: "output_text", text: "今は朝です" }] }],
+      })
+      .mockResolvedValueOnce({
+        id: "r2",
+        output: [{ type: "function_call", name: "current_time", call_id: "ct1", input: "{}" }],
+      })
+      .mockResolvedValueOnce({
+        id: "r3",
+        output: [{ type: "message", content: [{ type: "output_text", text: "Asia/Tokyo 22:35" }] }],
+      });
+
+    const out = await queryLmStudioResponseWithTools("今何時？");
+    expect(out).toBe("Asia/Tokyo 22:35");
+    expect(lmMocks.createResponse).toHaveBeenCalledTimes(3);
+    const retryOptions = lmMocks.createResponse.mock.calls[1]?.[2] as { instructions?: string };
+    expect(retryOptions.instructions).toContain(
+      "Do not answer directly before calling current_time."
+    );
   });
 });

@@ -1,5 +1,11 @@
 import { getAssistantName, isAssistantDebugEnabled } from "../config/assistant.js";
 import { cfg } from "../config/lm.js";
+import {
+  buildAssistantInstructions,
+  needsCurrentTime,
+  needsWebResearch,
+  normalizeWebResearchParams,
+} from "./tool-loop-policy.js";
 import { createResponse, extractOutputText } from "../lmstudio.js";
 import type { LmConfig, ResponseFunctionCall, ResponsesResponse } from "../lmstudio.js";
 import {
@@ -43,40 +49,13 @@ function resolveLmTimeoutMs(): number {
   return DEFAULT_LM_TIMEOUT_MS;
 }
 
-function needsWebResearch(inputText: string): boolean {
-  const t = inputText.toLowerCase();
-  const patterns = [
-    /天気|天候|気温|降水|台風|weather|forecast/,
-    /ニュース|報道|速報|最新|today|tomorrow|yesterday|今日|明日|昨日/,
-    /選挙|election|為替|株価|金利|価格|相場/,
-  ];
-  return patterns.some((pattern) => pattern.test(t));
-}
-
-function buildAssistantInstructions(forceWebResearch: boolean): string {
-  const today = new Date().toISOString().slice(0, 10);
-  const assistantName = getAssistantName();
-  const base = [
-    `You are a friendly assistant named ${assistantName}.`,
-    "Answer in concise and polite Japanese.",
-    `Today's date is ${today}. Use this as the reference date for all temporal reasoning.`,
-    "You can use current_time and web_research_digest tools when needed.",
-    "When calling web_research_digest, preserve the user's intent in the query.",
-    "If the user did not specify a year, do not arbitrarily lock the query to an older year.",
-    "Input can be either a single user question or a transcript formatted as 'user:'/'assistant:'. Prioritize full conversation context.",
-  ];
-  if (forceWebResearch) {
-    base.push(
-      "This question requires up-to-date information. Call web_research_digest at least once before the final answer.",
-      'Do not send an empty input to web_research_digest. Always pass JSON like {"query":"...","max_results":3,"max_pages":3}.'
-    );
-  }
-  return base.join("\n");
-}
-
 function collectFunctionCalls(response: ResponsesResponse): ResponseFunctionCall[] {
   const out = response.output ?? [];
   return out.filter((item): item is ResponseFunctionCall => item.type === "function_call");
+}
+
+function hasFunctionCall(response: ResponsesResponse, toolName: string): boolean {
+  return collectFunctionCalls(response).some((call) => call.name === toolName);
 }
 
 async function executeCall(
@@ -101,12 +80,7 @@ async function executeCall(
 
   if (call.name === webResearchDigestTool.name) {
     const parsed = parseWebResearchDigestParams(call.input);
-    const params = parsed.query
-      ? parsed
-      : {
-          ...parsed,
-          query: fallbackQuery.trim().slice(0, 300),
-        };
+    const params = normalizeWebResearchParams(parsed, fallbackQuery);
     debugLog("[tool debug] normalized web_research_digest params", {
       usedFallbackQuery: !parsed.query,
       queryPreview: params.query.slice(0, 120),
@@ -136,8 +110,14 @@ export async function queryLmStudioResponseWithTools(
   const maxLoops = options.maxLoops ?? DEFAULT_MAX_LOOPS;
   const timeoutMs = resolveLmTimeoutMs();
   const forceWebResearch = needsWebResearch(inputText);
+  const forceCurrentTime = needsCurrentTime(inputText);
   const tools = [currentTimeTool, webResearchDigestTool];
-  const instructions = buildAssistantInstructions(forceWebResearch);
+  const instructions = buildAssistantInstructions({
+    assistantName: getAssistantName(),
+    today: new Date().toISOString().slice(0, 10),
+    forceWebResearch,
+    forceCurrentTime,
+  });
 
   let response = await createResponse(lmConfig, inputText, {
     temperature: 0.2,
@@ -150,13 +130,22 @@ export async function queryLmStudioResponseWithTools(
     responseId: response.id ?? null,
     outputTypes: (response.output ?? []).map((item) => item.type),
     forceWebResearch,
+    forceCurrentTime,
   });
 
-  if (forceWebResearch && collectFunctionCalls(response).length === 0) {
-    const strictInstructions = [
-      instructions,
-      "IMPORTANT: Do not answer directly before calling web_research_digest.",
-    ].join("\n");
+  const mustRetryForWebResearch =
+    forceWebResearch && !hasFunctionCall(response, webResearchDigestTool.name);
+  const mustRetryForCurrentTime =
+    forceCurrentTime && !hasFunctionCall(response, currentTimeTool.name);
+  if (mustRetryForWebResearch || mustRetryForCurrentTime) {
+    const strictLines = [instructions];
+    if (mustRetryForWebResearch) {
+      strictLines.push("IMPORTANT: Do not answer directly before calling web_research_digest.");
+    }
+    if (mustRetryForCurrentTime) {
+      strictLines.push("IMPORTANT: Do not answer directly before calling current_time.");
+    }
+    const strictInstructions = strictLines.join("\n");
     response = await createResponse(lmConfig, inputText, {
       temperature: 0.1,
       maxOutputTokens: 700,
@@ -167,6 +156,8 @@ export async function queryLmStudioResponseWithTools(
     debugLog("[tool debug] forced tool retry response", {
       responseId: response.id ?? null,
       outputTypes: (response.output ?? []).map((item) => item.type),
+      mustRetryForWebResearch,
+      mustRetryForCurrentTime,
     });
   }
 

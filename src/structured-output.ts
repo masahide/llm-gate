@@ -1,20 +1,20 @@
 import { z } from "zod";
 
 export const structuredSchema = z.object({
-  summary: z.string().min(10, "要約は 10 文字以上").max(512),
+  summary: z.string().min(10, "Summary must be at least 10 characters long.").max(512),
   tone: z.enum(["calm", "energetic", "neutral"]),
-  actions: z.array(z.string().min(5, "アクションを具体的に記述してください")).min(2).max(4),
+  actions: z.array(z.string().min(5, "Describe each action concretely.")).min(2).max(4),
 });
 
 export type StructuredOutput = z.infer<typeof structuredSchema>;
 
 export const structuredInstructions = `
 {
-  "summary": "2 文程度で状況をまとめた文章",
-  "tone": "calm または energetic または neutral",
+  "summary": "A concise 1-2 sentence summary of the situation",
+  "tone": "calm | energetic | neutral",
   "actions": [
-    "今すぐできる具体的なアクションを 2~4 個",
-    "行動は短文（10 ~ 50 文字）で出力"
+    "Provide 2-4 concrete next actions that can be done immediately",
+    "Keep each action short (about 10 to 50 characters)"
   ]
 }
 `.trim();

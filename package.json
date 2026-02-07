@@ -10,7 +10,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\" \"docs/**/*.md\" \"AGENTS.md\" \"README.md\" \"package.json\" \"tsconfig*.json\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\" \"docs/**/*.md\" \"AGENTS.md\" \"README.md\" \"package.json\" \"tsconfig*.json\"",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test:watch": "vitest"
   },
   "keywords": [],
