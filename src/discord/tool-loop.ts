@@ -1,4 +1,5 @@
-import { cfg } from "../basic.js";
+import { getAssistantName, isAssistantDebugEnabled } from "../config/assistant.js";
+import { cfg } from "../config/lm.js";
 import { createResponse, extractOutputText } from "../lmstudio.js";
 import type { LmConfig, ResponseFunctionCall, ResponsesResponse } from "../lmstudio.js";
 import {
@@ -27,7 +28,7 @@ const DEFAULT_MAX_LOOPS = 4;
 const DEFAULT_LM_TIMEOUT_MS = 90000;
 
 function isDebugEnabled(): boolean {
-  return process.env.DEBUG_WEB_RESEARCH === "true" || process.env.DEBUG_SUZUME === "true";
+  return process.env.DEBUG_WEB_RESEARCH === "true" || isAssistantDebugEnabled();
 }
 
 function debugLog(message: string, payload: Record<string, unknown>): void {
@@ -54,18 +55,20 @@ function needsWebResearch(inputText: string): boolean {
 
 function buildAssistantInstructions(forceWebResearch: boolean): string {
   const today = new Date().toISOString().slice(0, 10);
+  const assistantName = getAssistantName();
   const base = [
-    "あなたは親しみやすいアシスタント Suzume です。日本語で簡潔かつ礼儀正しく答えてください。",
-    `今日は ${today} です。日付や年号はこの日付を基準に扱ってください。`,
-    "必要な情報取得には current_time と web_research_digest を使えます。",
-    "web_research_digest の query は、ユーザーの意図を保って作成してください。",
-    "ユーザーが年を明示していない場合、年を勝手に古い年へ固定しないでください。",
-    "入力は単発の質問か、'user:'/'assistant:' 形式の会話履歴です。履歴全体の文脈を優先して回答してください。",
+    `You are a friendly assistant named ${assistantName}.`,
+    "Answer in concise and polite Japanese.",
+    `Today's date is ${today}. Use this as the reference date for all temporal reasoning.`,
+    "You can use current_time and web_research_digest tools when needed.",
+    "When calling web_research_digest, preserve the user's intent in the query.",
+    "If the user did not specify a year, do not arbitrarily lock the query to an older year.",
+    "Input can be either a single user question or a transcript formatted as 'user:'/'assistant:'. Prioritize full conversation context.",
   ];
   if (forceWebResearch) {
     base.push(
-      "この質問は最新情報が必要です。最終回答の前に web_research_digest を少なくとも1回呼び出してください。",
-      'web_research_digest の入力は空にせず、必ず {"query":"...","max_results":3,"max_pages":3} 形式の JSON を渡してください。'
+      "This question requires up-to-date information. Call web_research_digest at least once before the final answer.",
+      'Do not send an empty input to web_research_digest. Always pass JSON like {"query":"...","max_results":3,"max_pages":3}.'
     );
   }
   return base.join("\n");

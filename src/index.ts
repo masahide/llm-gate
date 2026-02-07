@@ -6,6 +6,7 @@ import { buildThreadContext } from "./context/thread-context.js";
 import { formatTranscript } from "./context/transcript.js";
 import { shouldHandleMessage } from "./discord/should-handle.js";
 import { queryLmStudioResponseWithTools } from "./discord/tool-loop.js";
+import { getAssistantName, isAssistantDebugEnabled } from "./config/assistant.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -19,7 +20,7 @@ const client = new Client({
   ],
 });
 
-const debugBot = process.env.DEBUG_SUZUME === "true";
+const debugBot = isAssistantDebugEnabled();
 const MAX_THREAD_MESSAGES = 200;
 const DISCORD_FETCH_LIMIT_MAX = 100;
 const MAX_TRANSCRIPT_CHARS = 20000;
@@ -101,12 +102,13 @@ function splitReply(text: string): string[] {
 }
 
 function buildThreadName(text: string): string {
+  const assistantName = getAssistantName();
   const withoutMentions = text
     .replace(/<@!?\d+>/g, " ")
     .replace(/<@&\d+>/g, " ")
     .replace(/<#\d+>/g, " ");
   const base = normalize(withoutMentions).slice(0, 70) || "conversation";
-  return `suzume: ${base}`.slice(0, 90);
+  return `${assistantName}: ${base}`.slice(0, 90);
 }
 
 function isBotOwnedThread(channel: AnyThreadChannel, botUserId: string): boolean {

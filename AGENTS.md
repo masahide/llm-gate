@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-- `src/` に `basic.ts`（LM Studio 対話/ツールヘルパー）、`basic-sample.ts`（構造化出力 + `current_time` ツールのサンプル）、LM Studio 用 HTTP ラッパー (`lmstudio.ts`)、Zod による構造化出力パーサ (`structured-output.ts`)、`current_time` ツール定義 (`src/tools/current-time.ts`) を配置。
+- `src/` は Discord bot エントリポイント (`index.ts`)、LM Studio 用 HTTP ラッパー (`lmstudio.ts`)、Discord 側 tool loop (`src/discord/tool-loop.ts`)、設定 (`src/config/*.ts`)、Web 調査ツール群 (`src/tools/web-research-digest.ts`, `src/web/*.ts`, `src/security/*.ts`, `src/cache/*.ts`, `src/extract/*.ts`) と `current_time` ツール (`src/tools/current-time.ts`) で構成。
 - `tests/` の `*.test.ts` は `vitest` が読み込む前提。追加するテストは `tests/` 直下に置き、`vitest.config.ts` で Node + `tsconfig.test.json` が設定済み。
 - `.prettierrc` でフォーマットルールを定義しており、成果物 `dist/` や一時生成物は `.gitignore` で排除。
 - 依存性は `package.json`/`pnpm-lock.yaml` で管理し、`node_modules/.pnpm` 以下に展開される。手で追加したい場合は `pnpm add -D` で `devDependencies` に寄せる。
@@ -11,7 +11,6 @@
 
 - `pnpm install`: `packageManager` を尊重して開発依存をインストール。
 - `pnpm dev`: `index.ts` を `tsx` で起動し、Discord bot を稼働させてメンションに反応する。
-- `pnpm sample`: `basic-sample.ts` を `tsx` で起動し、構造化出力 + `current_time` ツールのデモを手元で再現する。
 - `pnpm format`: Prettier (`.prettierrc`) で `src`/`tests`/`docs`/設定ファイルを整形。
 - `pnpm format:check`: 同じファイル群に対して Prettier の `--check` を走らせ、違反を検出。
 - `pnpm typecheck`: `tsc --noEmit` で型チェック。
@@ -40,6 +39,7 @@
 
 ## Security & Configuration Tips
 
-- `basic.ts` は `LM_BASE_URL`/`LM_API_KEY`/`LM_MODEL` を参照するので、API キー類は `.env.local` などに入れて `.gitignore` に含める。
+- `src/config/lm.ts` は `LM_BASE_URL`/`LM_API_KEY`/`LM_MODEL` を参照するので、API キー類は `.env.local` などに入れて `.gitignore` に含める。
+- ボット名やデバッグ設定は `ASSISTANT_NAME` / `DEBUG_ASSISTANT`（必要に応じて `DEBUG_WEB_RESEARCH`）で制御する。
 - LM Studio のスタブを使う場合、`LM_BASE_URL=http://localhost:1234` のように環境変数で切り替える。
 - `current_time` ツールや Zod スキーマを更新する際は `tests/structured-output.test.ts` も合わせて修正し、意図した検証（`issues` を含む）が継続的にカバーされているか確認。

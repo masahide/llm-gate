@@ -138,7 +138,7 @@
     - `LM_BASE_URL` 任意
     - `LM_MODEL` 任意
     - `LM_API_KEY` 任意
-    - `DEBUG_SUZUME` 任意
+    - `DEBUG_ASSISTANT` 任意
 
 ### 4.2 データモデルとスキーマ
 

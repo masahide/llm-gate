@@ -20,7 +20,7 @@ export class BraveSearchClient {
   }
 
   private isDebugEnabled(): boolean {
-    return process.env.DEBUG_WEB_RESEARCH === "true" || process.env.DEBUG_SUZUME === "true";
+    return process.env.DEBUG_WEB_RESEARCH === "true" || process.env.DEBUG_ASSISTANT === "true";
   }
 
   private debugLog(message: string, payload: Record<string, unknown>): void {
