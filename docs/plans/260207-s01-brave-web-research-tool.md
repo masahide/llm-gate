@@ -24,7 +24,7 @@
   - `web_research_digest` tool の追加
     検索から要約と根拠アンカーまでを実行し、最小サイズの JSON を返す
   - Discord Bot 側の tool ループ実装
-    `queryLmStudioResponse` が tool call を解決して最終回答を返せるようにする
+    `src/index.ts` のメッセージ処理から tool call を解決して最終回答を返せるようにする
 
 - 成果物
   - `src/tools/web-research-digest.ts` tool 定義と実行
@@ -33,7 +33,8 @@
   - `src/cache/file-cache.ts` キャッシュ層
   - `src/security/url-validator.ts` SSRF 対策
   - `src/extract/readability.ts` 本文抽出
-  - `src/basic.ts` tool ループ統合
+  - `src/index.ts` Discord Bot への tool ループ統合
+  - 必要に応じて `src/discord/tool-loop.ts` などの補助モジュール
   - ユニットテスト一式
 
 - 制約
@@ -121,9 +122,8 @@
   環境変数で Brave API キーとキャッシュ設定を投入
 
 - Testing
-  既存に合わせる
-  既存不明のため、プロトタイプ優先で Node の `node:test` を第一候補
-  TS 周りが重い場合のみ Vitest を採用
+  既存に合わせて Vitest に統一する
+  `tests/**/*.test.ts` で Red Green Refactor を進める
 
 ---
 
@@ -156,6 +156,35 @@
 ### 4.2 データモデルとスキーマ
 
 robots 関連のフィールドは持たない。
+
+- `web_research_digest` input schema
+  - `query` string 必須
+    1 から 300 文字
+  - `max_results` number 任意
+    1 から 8、未指定時 5
+  - `max_pages` number 任意
+    1 から 5、未指定時 3
+  - `focus` string 任意
+    0 から 200 文字
+
+- `web_research_digest` output schema
+  - `query` string 必須
+  - `bullets` array 必須
+    1 から 8 件、各要素は 1 から 240 文字
+  - `citations` array 必須
+    0 から 8 件
+    各要素は `{ id, title, url, snippet }`
+    - `id` string 必須
+    - `title` string 必須、1 から 120 文字
+    - `url` string 必須、https のみ
+    - `snippet` string 任意、0 から 280 文字
+  - `errors` array 必須
+    0 から 8 件、各要素は `{ code, message, url? }`
+    - `code` は `brave_error` `fetch_timeout` `fetch_too_large` `invalid_url` `ssrf_blocked` `extract_failed` のいずれか
+    - `message` string 必須、1 から 200 文字
+    - `url` string 任意
+  - `meta` object 必須
+    `{ cache_hit_search, cache_hit_pages, elapsed_ms }`
 
 ### 4.3 エラーと例外 Error Handling
 
@@ -264,11 +293,18 @@ robots.txt 関連テストは削除する。代わりに以下を厚くする。
 - [ ] インターフェース契約の確定 スキーマと例の追加
 - [ ] Mermaid図の作成 更新
 - [ ] 環境変数とデフォルト定数の確定
-- [ ] テスト基盤の確認
+- [ ] 依存追加 `jsdom` `@mozilla/readability` と型定義の検討
+- [ ] `pnpm-lock.yaml` 更新確認と `pnpm check` 通過
+- [ ] テスト基盤確認 Vitest で最小 Red テストを先に追加
 
 ### Phase 2 Brave 検索とキャッシュ
 
-変更なし。
+- [ ] Test BraveSearchClient 正常系と API エラー系 Red
+- [ ] Impl `src/web/brave-search.ts` 実装 Green
+- [ ] Test FileCache TTL ヒット ミス 期限切れ Red
+- [ ] Impl `src/cache/file-cache.ts` 実装 Green
+- [ ] Refactor BraveSearchClient と Cache の責務整理 Refactor
+- [ ] `web_research_digest` から検索キャッシュを使う接続テスト追加
 
 ### Phase 3 ページ取得 本文抽出 セキュリティ
 
@@ -284,11 +320,21 @@ robots.txt 関連テストは削除する。代わりに以下を厚くする。
 
 ### Phase 4 web_research_digest ツール本体
 
-変更なし。
+- [ ] Test tool input schema バリデーション Red
+- [ ] Impl `src/tools/web-research-digest.ts` の schema と execute 実装 Green
+- [ ] Test output schema bullets citations errors 制約 Red
+- [ ] Impl 段落抽出 ランキング 要約整形 Green
+- [ ] Refactor エラー集約とログ整形 Refactor
+- [ ] キャッシュヒット時の出力一貫性テスト追加
 
 ### Phase 5 Discord Bot への統合 tool ループ
 
-変更なし。
+- [ ] Test Discord Bot が tool call を受けたときの分岐 Red
+- [ ] Impl `src/index.ts` 側で function_call 検出 実行 follow up を実装 Green
+- [ ] Test 複数 tool call 連鎖時の終了条件 Red
+- [ ] Impl 最大ループ回数 タイムアウト フォールバック応答 Green
+- [ ] Refactor tool 実行コードを `src/discord/tool-loop.ts` に分離 Refactor
+- [ ] 統合テスト 既存メンション処理との後方互換確認
 
 ### Phase 6 統合と検証
 
