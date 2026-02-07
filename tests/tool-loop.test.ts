@@ -20,6 +20,12 @@ const webResearchMocks = vi.hoisted(() => {
   };
 });
 
+const assistantProfileMocks = vi.hoisted(() => {
+  return {
+    runAssistantProfile: vi.fn(),
+  };
+});
+
 vi.mock("../src/lmstudio.js", () => ({
   createResponse: lmMocks.createResponse,
   extractOutputText: (resp: MockResponse) => {
@@ -49,12 +55,24 @@ vi.mock("../src/tools/web-research-digest.js", async () => {
   };
 });
 
+vi.mock("../src/tools/assistant-profile.js", async () => {
+  const actual = (await vi.importActual("../src/tools/assistant-profile.js")) as Record<
+    string,
+    unknown
+  >;
+  return {
+    ...actual,
+    runAssistantProfile: assistantProfileMocks.runAssistantProfile,
+  };
+});
+
 import { queryLmStudioResponseWithTools } from "../src/discord/tool-loop.js";
 
 describe("queryLmStudioResponseWithTools", () => {
   beforeEach(() => {
     lmMocks.createResponse.mockReset();
     webResearchMocks.runWebResearchDigest.mockReset();
+    assistantProfileMocks.runAssistantProfile.mockReset();
   });
 
   test("resolves current_time tool call and returns follow-up text", async () => {
@@ -122,5 +140,70 @@ describe("queryLmStudioResponseWithTools", () => {
     expect(retryOptions.instructions).toContain(
       "Do not answer directly before calling current_time."
     );
+  });
+
+  test("forces assistant_profile tool call for profile question", async () => {
+    assistantProfileMocks.runAssistantProfile.mockReturnValue({
+      assistant_name: "suzume",
+      model: "unsloth/qwen3-vl-4b-instruct",
+      version: "1.0.0",
+      started_at: "2026-02-07T14:00:00.000Z",
+      uptime_day: 0.3,
+    });
+    lmMocks.createResponse
+      .mockResolvedValueOnce({
+        id: "r1",
+        output: [{ type: "message", content: [{ type: "output_text", text: "わかりません" }] }],
+      })
+      .mockResolvedValueOnce({
+        id: "r2",
+        output: [{ type: "function_call", name: "assistant_profile", call_id: "ap1", input: "{}" }],
+      })
+      .mockResolvedValueOnce({
+        id: "r3",
+        output: [
+          { type: "message", content: [{ type: "output_text", text: "モデルは unsloth です" }] },
+        ],
+      });
+
+    const out = await queryLmStudioResponseWithTools("あなたのモデル名は？");
+    expect(out).toContain("モデル");
+    expect(lmMocks.createResponse).toHaveBeenCalledTimes(3);
+    expect(assistantProfileMocks.runAssistantProfile).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not keep returning model name for non-model latest turn in transcript", async () => {
+    webResearchMocks.runWebResearchDigest.mockResolvedValue({
+      query: "今日の天気",
+      bullets: ["晴れ"],
+      citations: [],
+      errors: [],
+      meta: { cache_hit_search: false, cache_hit_pages: 0, elapsed_ms: 1 },
+    });
+    lmMocks.createResponse
+      .mockResolvedValueOnce({
+        id: "r1",
+        output: [
+          {
+            type: "function_call",
+            name: "web_research_digest",
+            call_id: "wr1",
+            input: JSON.stringify({ query: "今日の天気", max_results: 3, max_pages: 2 }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "r2",
+        output: [{ type: "message", content: [{ type: "output_text", text: "天気の要約です" }] }],
+      });
+
+    const transcript = [
+      "user: hamu: あなたのモデル名は？",
+      "assistant: 現在使用しているモデルは unsloth/qwen3-vl-4b-instruct です。",
+      "user: hamu: 今日の天気は？",
+    ].join("\n");
+    const out = await queryLmStudioResponseWithTools(transcript);
+    expect(out).toBe("天気の要約です");
+    expect(lmMocks.createResponse).toHaveBeenCalledTimes(2);
   });
 });

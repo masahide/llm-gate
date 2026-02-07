@@ -2,6 +2,8 @@ import { getAssistantName, isAssistantDebugEnabled } from "../config/assistant.j
 import { cfg } from "../config/lm.js";
 import {
   buildAssistantInstructions,
+  extractLatestUserInput,
+  needsAssistantProfile,
   needsCurrentTime,
   needsWebResearch,
   normalizeWebResearchParams,
@@ -18,6 +20,7 @@ import {
   runWebResearchDigest,
   webResearchDigestTool,
 } from "../tools/web-research-digest.js";
+import { assistantProfileTool, runAssistantProfile } from "../tools/assistant-profile.js";
 
 type FunctionCallOutput = {
   type: "function_call_output";
@@ -95,6 +98,15 @@ async function executeCall(
     };
   }
 
+  if (call.name === assistantProfileTool.name) {
+    const output = runAssistantProfile();
+    return {
+      type: "function_call_output",
+      call_id: call.call_id ?? call.name,
+      output: JSON.stringify(output),
+    };
+  }
+
   return {
     type: "function_call_output",
     call_id: call.call_id ?? call.name,
@@ -107,16 +119,19 @@ export async function queryLmStudioResponseWithTools(
   options: ToolLoopOptions = {}
 ): Promise<string> {
   const lmConfig = options.lmConfig ?? cfg;
+  const latestUserInput = extractLatestUserInput(inputText);
   const maxLoops = options.maxLoops ?? DEFAULT_MAX_LOOPS;
   const timeoutMs = resolveLmTimeoutMs();
-  const forceWebResearch = needsWebResearch(inputText);
-  const forceCurrentTime = needsCurrentTime(inputText);
-  const tools = [currentTimeTool, webResearchDigestTool];
+  const forceWebResearch = needsWebResearch(latestUserInput);
+  const forceCurrentTime = needsCurrentTime(latestUserInput);
+  const forceAssistantProfile = needsAssistantProfile(latestUserInput);
+  const tools = [currentTimeTool, webResearchDigestTool, assistantProfileTool];
   const instructions = buildAssistantInstructions({
     assistantName: getAssistantName(),
     today: new Date().toISOString().slice(0, 10),
     forceWebResearch,
     forceCurrentTime,
+    forceAssistantProfile,
   });
 
   let response = await createResponse(lmConfig, inputText, {
@@ -131,19 +146,25 @@ export async function queryLmStudioResponseWithTools(
     outputTypes: (response.output ?? []).map((item) => item.type),
     forceWebResearch,
     forceCurrentTime,
+    forceAssistantProfile,
   });
 
   const mustRetryForWebResearch =
     forceWebResearch && !hasFunctionCall(response, webResearchDigestTool.name);
   const mustRetryForCurrentTime =
     forceCurrentTime && !hasFunctionCall(response, currentTimeTool.name);
-  if (mustRetryForWebResearch || mustRetryForCurrentTime) {
+  const mustRetryForAssistantProfile =
+    forceAssistantProfile && !hasFunctionCall(response, assistantProfileTool.name);
+  if (mustRetryForWebResearch || mustRetryForCurrentTime || mustRetryForAssistantProfile) {
     const strictLines = [instructions];
     if (mustRetryForWebResearch) {
       strictLines.push("IMPORTANT: Do not answer directly before calling web_research_digest.");
     }
     if (mustRetryForCurrentTime) {
       strictLines.push("IMPORTANT: Do not answer directly before calling current_time.");
+    }
+    if (mustRetryForAssistantProfile) {
+      strictLines.push("IMPORTANT: Do not answer directly before calling assistant_profile.");
     }
     const strictInstructions = strictLines.join("\n");
     response = await createResponse(lmConfig, inputText, {
@@ -158,6 +179,7 @@ export async function queryLmStudioResponseWithTools(
       outputTypes: (response.output ?? []).map((item) => item.type),
       mustRetryForWebResearch,
       mustRetryForCurrentTime,
+      mustRetryForAssistantProfile,
     });
   }
 

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
   buildAssistantInstructions,
+  extractLatestUserInput,
+  needsAssistantProfile,
   needsCurrentTime,
   needsWebResearch,
   normalizeWebResearchParams,
@@ -20,12 +22,28 @@ describe("tool-loop-policy", () => {
     expect(needsCurrentTime("ニュースを要約して")).toBe(false);
   });
 
+  test("needsAssistantProfile detects profile questions", () => {
+    expect(needsAssistantProfile("あなたのモデル名は？")).toBe(true);
+    expect(needsAssistantProfile("version と uptime を教えて")).toBe(true);
+    expect(needsAssistantProfile("今日の天気は？")).toBe(false);
+  });
+
+  test("extractLatestUserInput uses only latest user turn from transcript", () => {
+    const transcript = [
+      "user: hamu: あなたのモデル名は？",
+      "assistant: 現在使用しているモデルは ... です。",
+      "user: hamu: 今日の天気は？",
+    ].join("\n");
+    expect(extractLatestUserInput(transcript)).toBe("今日の天気は？");
+  });
+
   test("buildAssistantInstructions includes required directives", () => {
     const base = buildAssistantInstructions({
       assistantName: "suzume",
       today: "2026-02-07",
       forceWebResearch: false,
       forceCurrentTime: false,
+      forceAssistantProfile: false,
     });
     expect(base).toContain("suzume");
     expect(base).toContain("2026-02-07");
@@ -37,9 +55,11 @@ describe("tool-loop-policy", () => {
       today: "2026-02-07",
       forceWebResearch: true,
       forceCurrentTime: true,
+      forceAssistantProfile: true,
     });
     expect(forced).toContain("Call web_research_digest at least once");
     expect(forced).toContain("Call current_time at least once");
+    expect(forced).toContain("Call assistant_profile at least once");
     expect(forced).toContain("Do not send an empty input to web_research_digest");
   });
 
