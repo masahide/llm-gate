@@ -200,7 +200,7 @@ export async function queryLmStudioResponseWithTools(
 
     const outputs: FunctionCallOutput[] = [];
     for (const call of calls) {
-      outputs.push(await executeCall(call, inputText));
+      outputs.push(await executeCall(call, latestUserInput));
     }
 
     response = await createResponse(lmConfig, outputs, {

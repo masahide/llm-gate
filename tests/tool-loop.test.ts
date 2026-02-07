@@ -206,4 +206,44 @@ describe("queryLmStudioResponseWithTools", () => {
     expect(out).toBe("天気の要約です");
     expect(lmMocks.createResponse).toHaveBeenCalledTimes(2);
   });
+
+  test("uses latest user input as fallback query for empty web_research_digest input", async () => {
+    webResearchMocks.runWebResearchDigest.mockResolvedValue({
+      query: "池袋のタカノフルーツパーラーの営業時間は？",
+      bullets: ["営業時間は11:00から"],
+      citations: [],
+      errors: [],
+      meta: { cache_hit_search: false, cache_hit_pages: 0, elapsed_ms: 1 },
+    });
+    lmMocks.createResponse
+      .mockResolvedValueOnce({
+        id: "r1",
+        output: [
+          {
+            type: "function_call",
+            name: "web_research_digest",
+            call_id: "wr-empty",
+            input: "",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "r2",
+        output: [{ type: "message", content: [{ type: "output_text", text: "調査しました" }] }],
+      });
+
+    const transcript = [
+      "assistant: こんにちは！",
+      "user: hamu: あなたについての情報を教えて",
+      "assistant: お名前はAdjutantです。",
+      "user: hamu: 池袋のタカノフルーツパーラーの営業時間は？",
+    ].join("\n");
+    const out = await queryLmStudioResponseWithTools(transcript);
+    expect(out).toBe("調査しました");
+    expect(webResearchMocks.runWebResearchDigest).toHaveBeenCalledTimes(1);
+    const firstCallArg = webResearchMocks.runWebResearchDigest.mock.calls[0]?.[0] as {
+      query: string;
+    };
+    expect(firstCallArg.query).toBe("池袋のタカノフルーツパーラーの営業時間は？");
+  });
 });
