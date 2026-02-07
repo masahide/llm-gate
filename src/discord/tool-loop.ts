@@ -18,6 +18,7 @@ import {
 import {
   parseWebResearchDigestParams,
   runWebResearchDigest,
+  type WebResearchDigestOutput,
   webResearchDigestTool,
 } from "../tools/web-research-digest.js";
 import { assistantProfileTool, runAssistantProfile } from "../tools/assistant-profile.js";
@@ -26,6 +27,11 @@ type FunctionCallOutput = {
   type: "function_call_output";
   call_id: string;
   output: string;
+};
+
+type ExecuteCallResult = {
+  output: FunctionCallOutput;
+  webCitationUrls?: string[];
 };
 
 type ToolLoopOptions = {
@@ -61,57 +67,100 @@ function hasFunctionCall(response: ResponsesResponse, toolName: string): boolean
   return collectFunctionCalls(response).some((call) => call.name === toolName);
 }
 
+function resolveFunctionCallInput(call: ResponseFunctionCall): {
+  payload: string | undefined;
+  source: "input" | "arguments" | "none";
+} {
+  if (typeof call.input === "string" && call.input.length > 0) {
+    return { payload: call.input, source: "input" };
+  }
+  if (typeof call.arguments === "string" && call.arguments.length > 0) {
+    return { payload: call.arguments, source: "arguments" };
+  }
+  return { payload: undefined, source: "none" };
+}
+
 async function executeCall(
   call: ResponseFunctionCall,
   fallbackQuery: string
-): Promise<FunctionCallOutput> {
+): Promise<ExecuteCallResult> {
+  const resolvedInput = resolveFunctionCallInput(call);
   debugLog("[tool debug] execute function_call", {
+    rawFunctionCall: call,
     name: call.name,
     callId: call.call_id ?? null,
-    inputPreview: (call.input ?? "").slice(0, 300),
+    inputSource: resolvedInput.source,
+    inputPreview: (resolvedInput.payload ?? "").slice(0, 300),
   });
 
   if (call.name === currentTimeTool.name) {
-    const params = parseCurrentTimeParams(call.input);
+    const params = parseCurrentTimeParams(resolvedInput.payload);
     const output = formatCurrentTime(params);
     return {
-      type: "function_call_output",
-      call_id: call.call_id ?? call.name,
-      output,
+      output: {
+        type: "function_call_output",
+        call_id: call.call_id ?? call.name,
+        output,
+      },
     };
   }
 
   if (call.name === webResearchDigestTool.name) {
-    const parsed = parseWebResearchDigestParams(call.input);
+    const rawInput = resolvedInput.payload ?? "";
+    const parsed = parseWebResearchDigestParams(resolvedInput.payload);
     const params = normalizeWebResearchParams(parsed, fallbackQuery);
     debugLog("[tool debug] normalized web_research_digest params", {
       usedFallbackQuery: !parsed.query,
+      inputSource: resolvedInput.source,
+      rawInputPreview: rawInput.slice(0, 300),
+      parsedQueryPreview: parsed.query.slice(0, 120),
       queryPreview: params.query.slice(0, 120),
       maxResults: params.maxResults,
       maxPages: params.maxPages,
     });
     const output = await runWebResearchDigest(params);
+    const webOutput = output as WebResearchDigestOutput;
+    const webCitationUrls = webOutput.citations
+      .map((citation) => citation.url)
+      .filter((url): url is string => typeof url === "string" && url.length > 0);
     return {
-      type: "function_call_output",
-      call_id: call.call_id ?? call.name,
-      output: JSON.stringify(output),
+      output: {
+        type: "function_call_output",
+        call_id: call.call_id ?? call.name,
+        output: JSON.stringify(output),
+      },
+      webCitationUrls,
     };
   }
 
   if (call.name === assistantProfileTool.name) {
     const output = runAssistantProfile();
     return {
-      type: "function_call_output",
-      call_id: call.call_id ?? call.name,
-      output: JSON.stringify(output),
+      output: {
+        type: "function_call_output",
+        call_id: call.call_id ?? call.name,
+        output: JSON.stringify(output),
+      },
     };
   }
 
   return {
-    type: "function_call_output",
-    call_id: call.call_id ?? call.name,
-    output: JSON.stringify({ errors: [{ code: "unknown_tool", message: call.name }] }),
+    output: {
+      type: "function_call_output",
+      call_id: call.call_id ?? call.name,
+      output: JSON.stringify({ errors: [{ code: "unknown_tool", message: call.name }] }),
+    },
   };
+}
+
+function appendCitationsIfNeeded(text: string, citationUrls: string[]): string {
+  if (citationUrls.length === 0) return text;
+  if (/https?:\/\/\S+/i.test(text)) return text;
+
+  const uniqueUrls = [...new Set(citationUrls)].slice(0, 5);
+  if (uniqueUrls.length === 0) return text;
+  const sources = uniqueUrls.map((url) => `- ${url}`).join("\n");
+  return `${text}\n\n参照元:\n${sources}`;
 }
 
 export async function queryLmStudioResponseWithTools(
@@ -182,6 +231,7 @@ export async function queryLmStudioResponseWithTools(
       mustRetryForAssistantProfile,
     });
   }
+  const webCitationUrls: string[] = [];
 
   for (let i = 0; i < maxLoops; i += 1) {
     const calls = collectFunctionCalls(response);
@@ -192,15 +242,20 @@ export async function queryLmStudioResponseWithTools(
     });
     if (calls.length === 0) {
       const text = extractOutputText(response).trim();
+      const withCitations = appendCitationsIfNeeded(text, webCitationUrls);
       debugLog("[tool debug] no function_call, return message", {
-        textPreview: text.slice(0, 300),
+        textPreview: withCitations.slice(0, 300),
       });
-      return text || "少しお待ちください、確認しています。";
+      return withCitations || "少しお待ちください、確認しています。";
     }
 
     const outputs: FunctionCallOutput[] = [];
     for (const call of calls) {
-      outputs.push(await executeCall(call, latestUserInput));
+      const executed = await executeCall(call, latestUserInput);
+      outputs.push(executed.output);
+      if (executed.webCitationUrls) {
+        webCitationUrls.push(...executed.webCitationUrls);
+      }
     }
 
     response = await createResponse(lmConfig, outputs, {
@@ -215,9 +270,10 @@ export async function queryLmStudioResponseWithTools(
   }
 
   const fallback = extractOutputText(response).trim();
+  const fallbackWithCitations = appendCitationsIfNeeded(fallback, webCitationUrls);
   debugLog("[tool debug] reached maxLoops", {
     maxLoops,
-    textPreview: fallback.slice(0, 300),
+    textPreview: fallbackWithCitations.slice(0, 300),
   });
-  return fallback || "調査に時間がかかっています。もう一度試してください。";
+  return fallbackWithCitations || "調査に時間がかかっています。もう一度試してください。";
 }

@@ -13,6 +13,7 @@ export type ResponseFunctionCall = {
   name: string;
   call_id?: string;
   input?: string;
+  arguments?: string;
 };
 
 export type ResponseOutputItem = ResponseMessageOutput | ResponseFunctionCall;
