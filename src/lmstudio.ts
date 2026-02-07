@@ -31,6 +31,7 @@ export type CreateResponseOptions = {
   instructions?: string | undefined;
   maxOutputTokens?: number | undefined;
   tools?: unknown[] | undefined;
+  timeoutMs?: number | undefined;
 };
 
 export type LmConfig = {
@@ -63,6 +64,10 @@ export async function createResponse(
   input: ResponseInput,
   opts: CreateResponseOptions = {}
 ): Promise<ResponsesResponse> {
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? 30000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   const body: Record<string, unknown> = {
     model: cfg.model,
     max_output_tokens: opts.maxOutputTokens ?? 1024,
@@ -75,14 +80,25 @@ export async function createResponse(
   if (opts.instructions) body.instructions = opts.instructions;
   if (Array.isArray(opts.tools) && opts.tools.length) body.tools = opts.tools;
 
-  const res = await fetch(`${cfg.baseUrl}/responses`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`LM Studio request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!res.ok) {
     const text = await res.text();

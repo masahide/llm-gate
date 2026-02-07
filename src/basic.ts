@@ -1,7 +1,6 @@
 import { createResponse, extractOutputText } from "./lmstudio.js";
 import type { LmConfig } from "./lmstudio.js";
 import type { ResponseFunctionCall, ResponsesResponse } from "./lmstudio.js";
-import { structuredInstructions, parseStructuredText } from "./structured-output.js";
 import {
   currentTimeTool,
   formatCurrentTime,
@@ -59,14 +58,15 @@ export async function runCurrentTimeTool(cfg: LmConfig) {
   console.log("current_time tool の返答:", extractOutputText(followUp));
 }
 
-export async function queryLmStudioResponse(userMessage: string): Promise<string> {
-  const response = await createResponse(cfg, userMessage, {
+export async function queryLmStudioResponse(inputText: string): Promise<string> {
+  const response = await createResponse(cfg, inputText, {
     temperature: 0.2,
     maxOutputTokens: 350,
     instructions: [
-    "あなたは親しみやすいアシスタント Suzume です。日本語で簡潔かつ礼儀正しく答えてください。",
-    "以下のユーザー要求に対して、具体的かつ前向きな応答を行ってください。",
-  ].join("\n"),
+      "あなたは親しみやすいアシスタント Suzume です。日本語で簡潔かつ礼儀正しく答えてください。",
+      "入力は単発の質問か、'user:'/'assistant:' 形式の会話履歴です。履歴全体の文脈を優先して回答してください。",
+    ].join("\n"),
+    timeoutMs: 30000,
   });
   const result = extractOutputText(response).trim();
   return result || "少しお待ちください、確認しています。";

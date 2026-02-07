@@ -11,8 +11,8 @@ AIはタスク開始前に必ずこの内容を読み込み、指定されたフ
 # File Naming Convention
 
 この計画書は以下のパスと命名規則で作成してください。
-`doc/plan/YYMMDD-s{連番}-{実装名(kebab-case)}.md`
-例 `doc/plan/240520-s01-user-auth-feature.md`
+`docs/plans/YYMMDD-s{連番}-{実装名(kebab-case)}.md`
+例 `docs/plans/240520-s01-user-auth-feature.md`
 
 # Date Rule
 
