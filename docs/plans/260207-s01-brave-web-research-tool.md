@@ -290,50 +290,50 @@ robots.txt 関連テストは削除する。代わりに以下を厚くする。
 
 - [ ] 要件と仕様の確定 受け入れ条件の確定
       robots 非対応を既知の制約として明文化する
-- [ ] インターフェース契約の確定 スキーマと例の追加
+- [x] インターフェース契約の確定 スキーマと例の追加
 - [ ] Mermaid図の作成 更新
-- [ ] 環境変数とデフォルト定数の確定
-- [ ] 依存追加 `jsdom` `@mozilla/readability` と型定義の検討
-- [ ] `pnpm-lock.yaml` 更新確認と `pnpm check` 通過
-- [ ] テスト基盤確認 Vitest で最小 Red テストを先に追加
+- [x] 環境変数とデフォルト定数の確定
+- [x] 依存追加 `jsdom` `@mozilla/readability` と型定義の検討
+- [x] `pnpm-lock.yaml` 更新確認と `pnpm check` 通過
+- [x] テスト基盤確認 Vitest で最小 Red テストを先に追加
 
 ### Phase 2 Brave 検索とキャッシュ
 
 - [ ] Test BraveSearchClient 正常系と API エラー系 Red
-- [ ] Impl `src/web/brave-search.ts` 実装 Green
-- [ ] Test FileCache TTL ヒット ミス 期限切れ Red
-- [ ] Impl `src/cache/file-cache.ts` 実装 Green
+- [x] Impl `src/web/brave-search.ts` 実装 Green
+- [x] Test FileCache TTL ヒット ミス 期限切れ Red
+- [x] Impl `src/cache/file-cache.ts` 実装 Green
 - [ ] Refactor BraveSearchClient と Cache の責務整理 Refactor
 - [ ] `web_research_digest` から検索キャッシュを使う接続テスト追加
 
 ### Phase 3 ページ取得 本文抽出 セキュリティ
 
-- [ ] Test UrlValidator が SSRF を防ぐ Red
-- [ ] Impl UrlValidator 実装 Green
+- [x] Test UrlValidator が SSRF を防ぐ Red
+- [x] Impl UrlValidator 実装 Green
 - [ ] Refactor IP 判定ロジック整理 Refactor
 - [ ] Test PageFetcher が timeout max bytes redirect content-type を守る Red
-- [ ] Impl PageFetcher 実装 Green
+- [x] Impl PageFetcher 実装 Green
       robots 判定コードは入れない
 - [ ] Refactor 抽出と取得を別責務へ分割 Refactor
 - [ ] Test ReadabilityExtractor が HTML から本文を抽出できる Red
-- [ ] Impl ReadabilityExtractor 実装 Green
+- [x] Impl ReadabilityExtractor 実装 Green
 
 ### Phase 4 web_research_digest ツール本体
 
-- [ ] Test tool input schema バリデーション Red
-- [ ] Impl `src/tools/web-research-digest.ts` の schema と execute 実装 Green
-- [ ] Test output schema bullets citations errors 制約 Red
-- [ ] Impl 段落抽出 ランキング 要約整形 Green
+- [x] Test tool input schema バリデーション Red
+- [x] Impl `src/tools/web-research-digest.ts` の schema と execute 実装 Green
+- [x] Test output schema bullets citations errors 制約 Red
+- [x] Impl 段落抽出 ランキング 要約整形 Green
 - [ ] Refactor エラー集約とログ整形 Refactor
 - [ ] キャッシュヒット時の出力一貫性テスト追加
 
 ### Phase 5 Discord Bot への統合 tool ループ
 
-- [ ] Test Discord Bot が tool call を受けたときの分岐 Red
-- [ ] Impl `src/index.ts` 側で function_call 検出 実行 follow up を実装 Green
-- [ ] Test 複数 tool call 連鎖時の終了条件 Red
-- [ ] Impl 最大ループ回数 タイムアウト フォールバック応答 Green
-- [ ] Refactor tool 実行コードを `src/discord/tool-loop.ts` に分離 Refactor
+- [x] Test Discord Bot が tool call を受けたときの分岐 Red
+- [x] Impl `src/index.ts` 側で function_call 検出 実行 follow up を実装 Green
+- [x] Test 複数 tool call 連鎖時の終了条件 Red
+- [x] Impl 最大ループ回数 タイムアウト フォールバック応答 Green
+- [x] Refactor tool 実行コードを `src/discord/tool-loop.ts` に分離 Refactor
 - [ ] 統合テスト 既存メンション処理との後方互換確認
 
 ### Phase 6 統合と検証

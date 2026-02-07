@@ -7,13 +7,13 @@ const DEFAULT_TIMEZONE = "UTC";
 export const currentTimeTool = {
   type: "function" as const,
   name: "current_time",
-  description: "指定されたタイムゾーンの現在時刻を ISO 8601 形式で返します。",
+  description: "Returns the current time for the specified timezone in ISO 8601 format.",
   parameters: {
     type: "object",
     properties: {
       timezone: {
         type: "string",
-        description: "IANA タイムゾーン名（例: Asia/Tokyo）",
+        description: "IANA timezone name (for example: Asia/Tokyo).",
       },
     },
     required: ["timezone"],

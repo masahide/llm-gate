@@ -2,10 +2,10 @@ import "dotenv/config";
 import { createHash } from "node:crypto";
 import { Client, Events, GatewayIntentBits, Message } from "discord.js";
 import type { AnyThreadChannel } from "discord.js";
-import { queryLmStudioResponse } from "./basic.js";
 import { buildThreadContext } from "./context/thread-context.js";
 import { formatTranscript } from "./context/transcript.js";
 import { shouldHandleMessage } from "./discord/should-handle.js";
+import { queryLmStudioResponseWithTools } from "./discord/tool-loop.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -55,6 +55,26 @@ function buildReply(text: string): string {
   if (t.includes("おはよう")) return "おはようございます。今日は何を進めます？";
   if (t.includes("こんばんは")) return "こんばんは。続きやります？";
   return `なるほど。${text} ということですね`;
+}
+
+function isLmTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.message.includes("timed out after");
+}
+
+function buildLmErrorReply(error: unknown): string {
+  if (isLmTimeoutError(error)) {
+    return "回答の生成がタイムアウトしました。少し時間を置いてもう一度お試しください。";
+  }
+  if (error instanceof Error) {
+    if (error.message.includes("fetch failed")) {
+      return "LLM サーバーへ接続できませんでした。サーバー状態を確認して、もう一度お試しください。";
+    }
+    if (error.message.includes("HTTP ")) {
+      return "LLM サーバーでエラーが発生しました。しばらくしてから再試行してください。";
+    }
+  }
+  return "回答の生成中にエラーが発生しました。時間を置いてもう一度お試しください。";
 }
 
 function getBotMentionRegex(): RegExp | null {
@@ -213,15 +233,20 @@ function resolveTypingChannel(
 
 function startTypingLoop(channel: { sendTyping: () => Promise<unknown>; id: string }): () => void {
   let stopped = false;
+  let typingWarned = false;
   const sendTyping = async () => {
     if (stopped) return;
     try {
       await channel.sendTyping();
+      typingWarned = false;
     } catch (error) {
-      console.warn("[bot warn] typing 表示の更新に失敗しました", {
-        channelId: channel.id,
-        error,
-      });
+      if (!typingWarned) {
+        console.warn("[bot warn] typing 表示の更新に失敗しました", {
+          channelId: channel.id,
+          error,
+        });
+        typingWarned = true;
+      }
     }
   };
 
@@ -292,7 +317,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
     let reply: string;
     try {
-      const lmReply = await queryLmStudioResponse(lmInput);
+      const lmReply = await queryLmStudioResponseWithTools(lmInput);
       reply = lmReply || buildReply(body);
     } catch (error) {
       console.error("[bot error] LM Studio への問い合わせに失敗しました", {
@@ -301,7 +326,7 @@ client.on(Events.MessageCreate, async (msg) => {
         threadId: targetThread?.id,
         error,
       });
-      reply = buildReply(body);
+      reply = buildLmErrorReply(error);
     }
 
     await postReply(msg, targetThread, body, reply);
