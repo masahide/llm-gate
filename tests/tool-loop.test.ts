@@ -113,6 +113,29 @@ describe("queryLmStudioResponseWithTools", () => {
     expect(secondInput[0]?.output).toContain("Asia/Tokyo");
   });
 
+  test("builds multimodal input when text and image URLs are provided", async () => {
+    lmMocks.createResponse.mockResolvedValueOnce({
+      id: "r1",
+      output: [{ type: "message", content: [{ type: "output_text", text: "画像を確認しました" }] }],
+    });
+
+    const out = await queryLmStudioResponseWithTools({
+      text: "この画像の内容を教えて",
+      imageUrls: ["https://example.com/cat.png"],
+    });
+    expect(out).toBe("画像を確認しました");
+
+    const firstInput = lmMocks.createResponse.mock.calls[0]?.[1] as Array<{
+      role: string;
+      content: Array<{ type: string; text?: string; image_url?: string }>;
+    }>;
+    expect(firstInput[0]?.role).toBe("user");
+    expect(firstInput[0]?.content).toEqual([
+      { type: "input_text", text: "この画像の内容を教えて" },
+      { type: "input_image", image_url: "https://example.com/cat.png" },
+    ]);
+  });
+
   test("stops when tool-call chain exceeds maxLoops", async () => {
     lmMocks.createResponse.mockResolvedValue({
       id: "rx",

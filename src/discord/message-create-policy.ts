@@ -7,6 +7,7 @@ type DecideMessageCreateHandlingInput = {
   threadOwnerId: string | null;
   botUserId: string;
   body: string;
+  hasImageAttachments: boolean;
   mentionLabel: string;
 };
 
@@ -40,7 +41,7 @@ export function decideMessageCreateHandling(
     };
   }
 
-  if (!hasBody(input.body)) {
+  if (!hasBody(input.body) && !input.hasImageAttachments) {
     return {
       shouldHandle: true,
       shouldReact: input.mentionsBot,

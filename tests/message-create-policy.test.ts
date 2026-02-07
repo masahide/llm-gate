@@ -10,6 +10,7 @@ describe("decideMessageCreateHandling", () => {
       threadOwnerId: null,
       botUserId: "bot",
       body: "hello",
+      hasImageAttachments: false,
       mentionLabel: "<@bot>",
     });
     expect(out.shouldHandle).toBe(false);
@@ -25,6 +26,7 @@ describe("decideMessageCreateHandling", () => {
       threadOwnerId: null,
       botUserId: "bot",
       body: " ",
+      hasImageAttachments: false,
       mentionLabel: "<@bot>",
     });
     expect(out.shouldHandle).toBe(true);
@@ -39,6 +41,7 @@ describe("decideMessageCreateHandling", () => {
       threadOwnerId: "bot",
       botUserId: "bot",
       body: "続き",
+      hasImageAttachments: false,
       mentionLabel: "<@bot>",
     });
     expect(owned.useThreadContext).toBe(true);
@@ -50,6 +53,7 @@ describe("decideMessageCreateHandling", () => {
       threadOwnerId: "someone",
       botUserId: "bot",
       body: "続き",
+      hasImageAttachments: false,
       mentionLabel: "<@bot>",
     });
     expect(foreign.useThreadContext).toBe(false);
@@ -63,6 +67,7 @@ describe("decideMessageCreateHandling", () => {
       threadOwnerId: null,
       botUserId: "bot",
       body: "hello",
+      hasImageAttachments: false,
       mentionLabel: "<@bot>",
     });
     expect(mentioned.shouldReact).toBe(true);
@@ -74,8 +79,24 @@ describe("decideMessageCreateHandling", () => {
       threadOwnerId: "bot",
       botUserId: "bot",
       body: "hello",
+      hasImageAttachments: false,
       mentionLabel: "<@bot>",
     });
     expect(noMention.shouldReact).toBe(false);
+  });
+
+  test("does not return empty-body reply when image attachments exist", () => {
+    const out = decideMessageCreateHandling({
+      isAuthorBot: false,
+      mentionsBot: true,
+      isThread: false,
+      threadOwnerId: null,
+      botUserId: "bot",
+      body: " ",
+      hasImageAttachments: true,
+      mentionLabel: "<@bot>",
+    });
+    expect(out.shouldHandle).toBe(true);
+    expect(out.emptyBodyReply).toBeNull();
   });
 });

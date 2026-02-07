@@ -9,7 +9,12 @@ import {
   normalizeWebResearchParams,
 } from "./tool-loop-policy.js";
 import { createResponse, extractOutputText } from "../lmstudio.js";
-import type { LmConfig, ResponseFunctionCall, ResponsesResponse } from "../lmstudio.js";
+import type {
+  LmConfig,
+  ResponseFunctionCall,
+  ResponseInput,
+  ResponsesResponse,
+} from "../lmstudio.js";
 import {
   currentTimeTool,
   formatCurrentTime,
@@ -39,8 +44,11 @@ type ToolLoopOptions = {
   maxLoops?: number;
 };
 
+export type ToolLoopInput = string | { text: string; imageUrls?: string[] };
+
 const DEFAULT_MAX_LOOPS = 4;
 const DEFAULT_LM_TIMEOUT_MS = 90000;
+const MAX_INPUT_IMAGE_URLS = 4;
 
 function isDebugEnabled(): boolean {
   return process.env.DEBUG_WEB_RESEARCH === "true" || isAssistantDebugEnabled();
@@ -56,6 +64,21 @@ function resolveLmTimeoutMs(): number {
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed >= 1000) return Math.floor(parsed);
   return DEFAULT_LM_TIMEOUT_MS;
+}
+
+function buildInitialResponseInput(input: ToolLoopInput): ResponseInput {
+  if (typeof input === "string") return input;
+  const text = input.text;
+  const imageUrls = (input.imageUrls ?? [])
+    .filter((url): url is string => typeof url === "string" && url.length > 0)
+    .slice(0, MAX_INPUT_IMAGE_URLS);
+  if (imageUrls.length === 0) return text;
+
+  const content = [
+    { type: "input_text", text },
+    ...imageUrls.map((url) => ({ type: "input_image", image_url: url })),
+  ];
+  return [{ role: "user", content }];
 }
 
 function collectFunctionCalls(response: ResponsesResponse): ResponseFunctionCall[] {
@@ -164,10 +187,12 @@ function appendCitationsIfNeeded(text: string, citationUrls: string[]): string {
 }
 
 export async function queryLmStudioResponseWithTools(
-  inputText: string,
+  input: ToolLoopInput,
   options: ToolLoopOptions = {}
 ): Promise<string> {
   const lmConfig = options.lmConfig ?? cfg;
+  const inputText = typeof input === "string" ? input : input.text;
+  const initialInput = buildInitialResponseInput(input);
   const latestUserInput = extractLatestUserInput(inputText);
   const maxLoops = options.maxLoops ?? DEFAULT_MAX_LOOPS;
   const timeoutMs = resolveLmTimeoutMs();
@@ -183,7 +208,7 @@ export async function queryLmStudioResponseWithTools(
     forceAssistantProfile,
   });
 
-  let response = await createResponse(lmConfig, inputText, {
+  let response = await createResponse(lmConfig, initialInput, {
     temperature: 0.2,
     maxOutputTokens: 700,
     instructions,
@@ -216,7 +241,7 @@ export async function queryLmStudioResponseWithTools(
       strictLines.push("IMPORTANT: Do not answer directly before calling assistant_profile.");
     }
     const strictInstructions = strictLines.join("\n");
-    response = await createResponse(lmConfig, inputText, {
+    response = await createResponse(lmConfig, initialInput, {
       temperature: 0.1,
       maxOutputTokens: 700,
       instructions: strictInstructions,

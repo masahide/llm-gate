@@ -1,3 +1,5 @@
+import { extractImageAttachmentUrls } from "./message-utils.js";
+
 type DecideInput = {
   isAuthorBot: boolean;
   mentionsBot: boolean;
@@ -5,6 +7,7 @@ type DecideInput = {
   threadOwnerId: string | null;
   botUserId: string;
   body: string;
+  hasImageAttachments: boolean;
   mentionLabel: string;
 };
 
@@ -23,9 +26,12 @@ type MessageLike = {
     isThread: () => boolean;
   };
   mentions: { has: (id: string) => boolean };
+  attachments?: { values: () => IterableIterator<{ url?: string | null }> };
   reply: (text: string) => Promise<unknown>;
   react: (emoji: string) => Promise<unknown>;
 };
+
+type LmInputPayload = string | { text: string; imageUrls: string[] };
 
 type HandleMessageCreateDeps = {
   botUserId: string;
@@ -53,7 +59,7 @@ type HandleMessageCreateDeps = {
       debugEnabled: boolean;
     }
   ) => Promise<string>;
-  queryLmStudioResponseWithTools: (input: string) => Promise<string>;
+  queryLmStudioResponseWithTools: (input: LmInputPayload) => Promise<string>;
   buildReply: (body: string, mentionLabel: string) => string;
   buildLmErrorReply: (error: unknown) => string;
   postReply: (
@@ -86,6 +92,7 @@ export async function handleMessageCreate(
       ? threadChannel.ownerId
       : null;
   const body = deps.extractBody(msg, deps.botUserId);
+  const imageUrls = extractImageAttachmentUrls(msg);
 
   const decision = deps.decideMessageCreateHandling({
     isAuthorBot: msg.author.bot,
@@ -94,6 +101,7 @@ export async function handleMessageCreate(
     threadOwnerId,
     botUserId: deps.botUserId,
     body,
+    hasImageAttachments: imageUrls.length > 0,
     mentionLabel: deps.mentionLabel,
   });
   if (!decision.shouldHandle) return;
@@ -122,7 +130,7 @@ export async function handleMessageCreate(
     : null;
 
   try {
-    let lmInput = body;
+    let lmInputText = body;
     if (targetThread) {
       const transcript = await deps.buildTranscriptFromThread(targetThread, {
         botUserId: deps.botUserId,
@@ -131,8 +139,10 @@ export async function handleMessageCreate(
         maxTranscriptChars: MAX_TRANSCRIPT_CHARS,
         debugEnabled: deps.debugBot,
       });
-      if (transcript) lmInput = transcript;
+      if (transcript) lmInputText = transcript;
     }
+    const lmInput: LmInputPayload =
+      imageUrls.length > 0 ? { text: lmInputText, imageUrls } : lmInputText;
 
     let reply: string;
     try {

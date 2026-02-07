@@ -3,6 +3,8 @@ import type { Message } from "discord.js";
 const DISCORD_MESSAGE_HARD_LIMIT = 1800;
 const THREAD_TITLE_BODY_LIMIT = 70;
 const THREAD_TITLE_LIMIT = 90;
+const MAX_INPUT_IMAGES = 4;
+const IMAGE_FILE_PATTERN = /\.(png|jpe?g|gif|webp|bmp|tiff?|svg)(?:$|\?)/i;
 
 function normalize(input: string): string {
   return input.trim().replace(/\s+/g, " ");
@@ -27,6 +29,44 @@ export function extractBodyFromContent(content: string, botUserId?: string): str
 
 export function extractBody(msg: Message, botUserId?: string): string {
   return extractBodyFromContent(msg.content, botUserId);
+}
+
+type AttachmentLike = {
+  url?: string | null;
+  contentType?: string | null;
+  name?: string | null;
+};
+
+type AttachmentCollectionLike = {
+  values: () => IterableIterator<AttachmentLike>;
+};
+
+function isImageAttachment(attachment: AttachmentLike): boolean {
+  if (typeof attachment.contentType === "string" && attachment.contentType.startsWith("image/")) {
+    return true;
+  }
+  if (typeof attachment.name === "string" && IMAGE_FILE_PATTERN.test(attachment.name)) {
+    return true;
+  }
+  if (typeof attachment.url === "string" && IMAGE_FILE_PATTERN.test(attachment.url)) {
+    return true;
+  }
+  return false;
+}
+
+export function extractImageAttachmentUrls(
+  msg: { attachments?: AttachmentCollectionLike },
+  maxCount = MAX_INPUT_IMAGES
+): string[] {
+  if (!msg.attachments) return [];
+  const urls: string[] = [];
+  for (const attachment of msg.attachments.values()) {
+    if (urls.length >= maxCount) break;
+    if (!isImageAttachment(attachment)) continue;
+    if (typeof attachment.url !== "string" || attachment.url.length === 0) continue;
+    urls.push(attachment.url);
+  }
+  return urls;
 }
 
 export function splitReply(text: string): string[] {

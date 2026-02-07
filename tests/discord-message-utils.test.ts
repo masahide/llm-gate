@@ -3,6 +3,7 @@ import {
   buildLmErrorReply,
   buildThreadName,
   extractBodyFromContent,
+  extractImageAttachmentUrls,
   splitReply,
 } from "../src/discord/message-utils.js";
 
@@ -39,5 +40,21 @@ describe("discord message utils", () => {
     expect(buildLmErrorReply(new Error("fetch failed"))).toContain("接続");
     expect(buildLmErrorReply(new Error("HTTP 500"))).toContain("LLM サーバー");
     expect(buildLmErrorReply(new Error("something else"))).toContain("エラー");
+  });
+
+  test("extractImageAttachmentUrls returns only image attachments", () => {
+    const msg = {
+      attachments: {
+        values: function* () {
+          yield { url: "https://example.com/a.png", contentType: "image/png", name: "a.png" };
+          yield { url: "https://example.com/b.pdf", contentType: "application/pdf", name: "b.pdf" };
+          yield { url: "https://example.com/c.jpg", contentType: null, name: "c.jpg" };
+        },
+      },
+    };
+    expect(extractImageAttachmentUrls(msg)).toEqual([
+      "https://example.com/a.png",
+      "https://example.com/c.jpg",
+    ]);
   });
 });

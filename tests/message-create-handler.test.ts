@@ -12,6 +12,7 @@ function createMessageMock(overrides: Record<string, unknown> = {}) {
       sendTyping: vi.fn().mockResolvedValue(undefined),
     },
     mentions: { has: () => true },
+    attachments: { values: function* () {} },
     reply: vi.fn().mockResolvedValue(undefined),
     react: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -88,6 +89,47 @@ describe("handleMessageCreate", () => {
     expect(query).toHaveBeenCalledWith("transcript");
     expect(postReply).toHaveBeenCalledTimes(1);
     expect(stopTyping).toHaveBeenCalledTimes(1);
+  });
+
+  test("passes text+imageUrls payload when image attachments exist", async () => {
+    const msg = createMessageMock({
+      attachments: {
+        values: function* () {
+          yield {
+            url: "https://example.com/cat.png",
+            contentType: "image/png",
+            name: "cat.png",
+          };
+        },
+      },
+    });
+    const query = vi.fn().mockResolvedValue("reply");
+    await handleMessageCreate(msg, {
+      botUserId: "bot",
+      mentionLabel: "<@bot>",
+      assistantName: "suzume",
+      typingRefreshIntervalMs: 8000,
+      debugBot: false,
+      extractBody: () => "この画像を説明して",
+      decideMessageCreateHandling: () => ({
+        shouldHandle: true,
+        shouldReact: false,
+        useThreadContext: false,
+        emptyBodyReply: null,
+      }),
+      resolveTypingChannel: () => null,
+      startTypingLoop: vi.fn(),
+      buildTranscriptFromThread: vi.fn(),
+      queryLmStudioResponseWithTools: query,
+      buildReply: vi.fn(),
+      buildLmErrorReply: vi.fn(),
+      postReply: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(query).toHaveBeenCalledWith({
+      text: "この画像を説明して",
+      imageUrls: ["https://example.com/cat.png"],
+    });
   });
 
   test("posts LM error reply when query fails", async () => {
