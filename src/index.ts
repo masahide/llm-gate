@@ -23,6 +23,7 @@ const debugBot = process.env.DEBUG_SUZUME === "true";
 const MAX_THREAD_MESSAGES = 200;
 const DISCORD_FETCH_LIMIT_MAX = 100;
 const MAX_TRANSCRIPT_CHARS = 20000;
+const TYPING_REFRESH_INTERVAL_MS = 8000;
 
 function mentionLabel(): string {
   return client.user ? `<@${client.user.id}>` : "@bot";
@@ -70,7 +71,13 @@ function extractBody(msg: Message): string {
 }
 
 function splitReply(text: string): string[] {
-  return text.length <= 1800 ? [text] : [text.slice(0, 1800), text.slice(1800)];
+  if (text.length <= 1800) return [text];
+
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += 1800) {
+    chunks.push(text.slice(i, i + 1800));
+  }
+  return chunks;
 }
 
 function buildThreadName(text: string): string {
@@ -195,6 +202,40 @@ async function postReply(
   }
 }
 
+function resolveTypingChannel(
+  msg: Message,
+  targetThread: AnyThreadChannel | null
+): { sendTyping: () => Promise<unknown>; id: string } | null {
+  if (targetThread?.isTextBased() && "sendTyping" in targetThread) return targetThread;
+  if (msg.channel.isTextBased() && "sendTyping" in msg.channel) return msg.channel;
+  return null;
+}
+
+function startTypingLoop(channel: { sendTyping: () => Promise<unknown>; id: string }): () => void {
+  let stopped = false;
+  const sendTyping = async () => {
+    if (stopped) return;
+    try {
+      await channel.sendTyping();
+    } catch (error) {
+      console.warn("[bot warn] typing 表示の更新に失敗しました", {
+        channelId: channel.id,
+        error,
+      });
+    }
+  };
+
+  void sendTyping();
+  const timer = setInterval(() => {
+    void sendTyping();
+  }, TYPING_REFRESH_INTERVAL_MS);
+
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
 client.on(Events.MessageCreate, async (msg) => {
   const botUserId = client.user?.id;
   if (!botUserId) return;
@@ -239,33 +280,34 @@ client.on(Events.MessageCreate, async (msg) => {
     }
   }
 
-  if (targetThread?.isTextBased()) {
-    await targetThread.sendTyping();
-  } else if (msg.channel.isTextBased()) {
-    await msg.channel.sendTyping();
-  }
+  const typingChannel = resolveTypingChannel(msg, targetThread);
+  const stopTyping = typingChannel ? startTypingLoop(typingChannel) : null;
 
-  let lmInput = body;
-  if (targetThread && isBotOwnedThread(targetThread, botUserId)) {
-    const transcript = await buildTranscriptFromThread(targetThread, botUserId);
-    if (transcript) lmInput = transcript;
-  }
-
-  let reply: string;
   try {
-    const lmReply = await queryLmStudioResponse(lmInput);
-    reply = lmReply || buildReply(body);
-  } catch (error) {
-    console.error("[bot error] LM Studio への問い合わせに失敗しました", {
-      channelId: msg.channel.id,
-      messageId: msg.id,
-      threadId: targetThread?.id,
-      error,
-    });
-    reply = buildReply(body);
-  }
+    let lmInput = body;
+    if (targetThread && isBotOwnedThread(targetThread, botUserId)) {
+      const transcript = await buildTranscriptFromThread(targetThread, botUserId);
+      if (transcript) lmInput = transcript;
+    }
 
-  await postReply(msg, targetThread, body, reply);
+    let reply: string;
+    try {
+      const lmReply = await queryLmStudioResponse(lmInput);
+      reply = lmReply || buildReply(body);
+    } catch (error) {
+      console.error("[bot error] LM Studio への問い合わせに失敗しました", {
+        channelId: msg.channel.id,
+        messageId: msg.id,
+        threadId: targetThread?.id,
+        error,
+      });
+      reply = buildReply(body);
+    }
+
+    await postReply(msg, targetThread, body, reply);
+  } finally {
+    stopTyping?.();
+  }
 });
 
 await client.login(token);
