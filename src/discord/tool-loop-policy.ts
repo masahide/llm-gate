@@ -2,7 +2,9 @@ import type { WebResearchDigestParams } from "../tools/web-research-digest.js";
 
 type BuildAssistantInstructionsParams = {
   assistantName: string;
-  today: string;
+  todayJst: string;
+  weekdayJst: string;
+  nowJst: string;
   forceWebResearch: boolean;
   forceCurrentTime: boolean;
   forceAssistantProfile: boolean;
@@ -53,7 +55,8 @@ export function buildAssistantInstructions(params: BuildAssistantInstructionsPar
   const base = [
     `You are a friendly assistant named ${params.assistantName}.`,
     "Answer in concise and polite Japanese.",
-    `Today's date is ${params.today}. Use this as the reference date for all temporal reasoning.`,
+    `Current date and time in Japan Standard Time (JST, UTC+09:00): ${params.nowJst}.`,
+    `Today's date in JST is ${params.todayJst} (${params.weekdayJst}). Use this as the reference date for all temporal reasoning.`,
     "You can use current_time, web_research_digest, and assistant_profile tools when needed.",
     "For any time-related answer, use Asia/Tokyo and 24-hour format.",
     "When calling web_research_digest, preserve the user's intent in the query.",

@@ -40,19 +40,26 @@ describe("tool-loop-policy", () => {
   test("buildAssistantInstructions includes required directives", () => {
     const base = buildAssistantInstructions({
       assistantName: "suzume",
-      today: "2026-02-07",
+      todayJst: "2026-02-07",
+      weekdayJst: "Saturday",
+      nowJst: "2026-02-07 23:15:42",
       forceWebResearch: false,
       forceCurrentTime: false,
       forceAssistantProfile: false,
     });
     expect(base).toContain("suzume");
     expect(base).toContain("2026-02-07");
+    expect(base).toContain("(Saturday)");
+    expect(base).toContain("Japan Standard Time");
+    expect(base).toContain("23:15:42");
     expect(base).toContain("24-hour format");
     expect(base).not.toContain("Call web_research_digest at least once");
 
     const forced = buildAssistantInstructions({
       assistantName: "suzume",
-      today: "2026-02-07",
+      todayJst: "2026-02-07",
+      weekdayJst: "Saturday",
+      nowJst: "2026-02-07 23:15:42",
       forceWebResearch: true,
       forceCurrentTime: true,
       forceAssistantProfile: true,

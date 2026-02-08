@@ -50,6 +50,13 @@ const DEFAULT_MAX_LOOPS = 4;
 const DEFAULT_LM_TIMEOUT_MS = 90000;
 const MAX_INPUT_IMAGE_URLS = 4;
 
+type PayloadSizeStats = {
+  shape: "string" | "array" | "object" | "unknown";
+  chars: number;
+  bytes: number;
+  preview: string;
+};
+
 function isDebugEnabled(): boolean {
   return process.env.DEBUG_WEB_RESEARCH === "true" || isAssistantDebugEnabled();
 }
@@ -64,6 +71,123 @@ function resolveLmTimeoutMs(): number {
   const parsed = raw ? Number(raw) : NaN;
   if (Number.isFinite(parsed) && parsed >= 1000) return Math.floor(parsed);
   return DEFAULT_LM_TIMEOUT_MS;
+}
+
+function formatJstNow(now: Date): { todayJst: string; weekdayJst: string; nowJst: string } {
+  const dateParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const timeParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tokyo",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(now);
+
+  const year = dateParts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = dateParts.find((part) => part.type === "month")?.value ?? "00";
+  const day = dateParts.find((part) => part.type === "day")?.value ?? "00";
+  const hour = timeParts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = timeParts.find((part) => part.type === "minute")?.value ?? "00";
+  const second = timeParts.find((part) => part.type === "second")?.value ?? "00";
+  const todayJst = `${year}-${month}-${day}`;
+  const weekdayJst = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    weekday: "long",
+  }).format(now);
+
+  return {
+    todayJst,
+    weekdayJst,
+    nowJst: `${todayJst} ${hour}:${minute}:${second}`,
+  };
+}
+
+function measurePayloadSize(input: ResponseInput): PayloadSizeStats {
+  if (typeof input === "string") {
+    return {
+      shape: "string",
+      chars: input.length,
+      bytes: Buffer.byteLength(input, "utf8"),
+      preview: input.slice(0, 200),
+    };
+  }
+
+  const shape = Array.isArray(input) ? "array" : typeof input === "object" ? "object" : "unknown";
+  try {
+    const json = JSON.stringify(input);
+    return {
+      shape,
+      chars: json.length,
+      bytes: Buffer.byteLength(json, "utf8"),
+      preview: json.slice(0, 200),
+    };
+  } catch {
+    return {
+      shape,
+      chars: -1,
+      bytes: -1,
+      preview: "[unserializable payload]",
+    };
+  }
+}
+
+function measureTextSize(text: string): { chars: number; bytes: number; preview: string } {
+  return {
+    chars: text.length,
+    bytes: Buffer.byteLength(text, "utf8"),
+    preview: text.slice(0, 200),
+  };
+}
+
+function measureJsonSize(value: unknown): { chars: number; bytes: number } {
+  try {
+    const json = JSON.stringify(value);
+    return {
+      chars: json.length,
+      bytes: Buffer.byteLength(json, "utf8"),
+    };
+  } catch {
+    return { chars: -1, bytes: -1 };
+  }
+}
+
+function debugRequestSummary(params: {
+  stage: "initial" | "forced_retry" | "follow_up";
+  input: ResponseInput;
+  instructions?: string;
+  tools: unknown[];
+  previousResponseId?: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  timeoutMs: number;
+}): void {
+  const inputSize = measurePayloadSize(params.input);
+  const toolsSize = measureJsonSize(params.tools);
+  const instructionsSize =
+    typeof params.instructions === "string" ? measureTextSize(params.instructions) : undefined;
+
+  debugLog("[tool debug] lm request payload summary", {
+    stage: params.stage,
+    previousResponseId: params.previousResponseId ?? null,
+    maxOutputTokens: params.maxOutputTokens ?? null,
+    temperature: params.temperature ?? null,
+    timeoutMs: params.timeoutMs,
+    inputShape: inputSize.shape,
+    inputChars: inputSize.chars,
+    inputBytes: inputSize.bytes,
+    inputPreview: inputSize.preview,
+    instructionsChars: instructionsSize?.chars ?? null,
+    instructionsBytes: instructionsSize?.bytes ?? null,
+    instructionsPreview: instructionsSize?.preview ?? null,
+    toolsCount: params.tools.length,
+    toolsJsonChars: toolsSize.chars,
+    toolsJsonBytes: toolsSize.bytes,
+  });
 }
 
 function buildInitialResponseInput(input: ToolLoopInput): ResponseInput {
@@ -200,12 +324,25 @@ export async function queryLmStudioResponseWithTools(
   const forceCurrentTime = needsCurrentTime(latestUserInput);
   const forceAssistantProfile = needsAssistantProfile(latestUserInput);
   const tools = [currentTimeTool, webResearchDigestTool, assistantProfileTool];
+  const jstNow = formatJstNow(new Date());
   const instructions = buildAssistantInstructions({
     assistantName: getAssistantName(),
-    today: new Date().toISOString().slice(0, 10),
+    todayJst: jstNow.todayJst,
+    weekdayJst: jstNow.weekdayJst,
+    nowJst: jstNow.nowJst,
     forceWebResearch,
     forceCurrentTime,
     forceAssistantProfile,
+  });
+
+  debugRequestSummary({
+    stage: "initial",
+    input: initialInput,
+    instructions,
+    tools,
+    maxOutputTokens: 700,
+    temperature: 0.2,
+    timeoutMs,
   });
 
   let response = await createResponse(lmConfig, initialInput, {
@@ -241,6 +378,15 @@ export async function queryLmStudioResponseWithTools(
       strictLines.push("IMPORTANT: Do not answer directly before calling assistant_profile.");
     }
     const strictInstructions = strictLines.join("\n");
+    debugRequestSummary({
+      stage: "forced_retry",
+      input: initialInput,
+      instructions: strictInstructions,
+      tools,
+      maxOutputTokens: 700,
+      temperature: 0.1,
+      timeoutMs,
+    });
     response = await createResponse(lmConfig, initialInput, {
       temperature: 0.1,
       maxOutputTokens: 700,
@@ -282,6 +428,14 @@ export async function queryLmStudioResponseWithTools(
         webCitationUrls.push(...executed.webCitationUrls);
       }
     }
+
+    debugRequestSummary({
+      stage: "follow_up",
+      input: outputs,
+      tools,
+      ...(response.id ? { previousResponseId: response.id } : {}),
+      timeoutMs,
+    });
 
     response = await createResponse(lmConfig, outputs, {
       previousResponseId: response.id,
