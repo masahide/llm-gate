@@ -10,6 +10,8 @@ type BuildAssistantInstructionsParams = {
   forceAssistantProfile: boolean;
 };
 
+export type AssistantPersona = "default" | "seven_dtd_ops";
+
 export function extractLatestUserInput(inputText: string): string {
   const lines = inputText
     .split("\n")
@@ -51,8 +53,10 @@ export function needsAssistantProfile(inputText: string): boolean {
   return patterns.some((pattern) => pattern.test(t));
 }
 
-export function buildAssistantInstructions(params: BuildAssistantInstructionsParams): string {
-  const base = [
+export function buildAssistantInstructionsDefault(
+  params: BuildAssistantInstructionsParams
+): string {
+  const lines = [
     `You are a friendly assistant named ${params.assistantName}.`,
     "Answer in concise and polite Japanese.",
     `Current date and time in Japan Standard Time (JST, UTC+09:00): ${params.nowJst}.`,
@@ -64,23 +68,45 @@ export function buildAssistantInstructions(params: BuildAssistantInstructionsPar
     "Input can be either a single user question or a transcript formatted as 'user:'/'assistant:'. Prioritize full conversation context.",
   ];
   if (params.forceCurrentTime) {
-    base.push(
+    lines.push(
       "This question asks for current time. Call current_time at least once before the final answer.",
       'If timezone is omitted, call current_time with {"timezone":"Asia/Tokyo"}.'
     );
   }
   if (params.forceAssistantProfile) {
-    base.push(
+    lines.push(
       "This question asks about assistant profile. Call assistant_profile at least once before the final answer."
     );
   }
   if (params.forceWebResearch) {
-    base.push(
+    lines.push(
       "This question requires up-to-date information. Call web_research_digest at least once before the final answer.",
       'Do not send an empty input to web_research_digest. Always pass JSON like {"query":"...","max_results":3,"max_pages":3}.'
     );
   }
-  return base.join("\n");
+  return lines.join("\n");
+}
+
+export function buildAssistantInstructionsSevenDtdOps(
+  params: BuildAssistantInstructionsParams
+): string {
+  const lines = [
+    buildAssistantInstructionsDefault(params),
+    "You are operating in a controlled 7 Days to Die server operations channel.",
+    "Prefer seven_dtd_get_status, seven_dtd_get_summary, and seven_dtd_get_logs for server questions.",
+    "When write tools are unavailable or disabled, explain that only read-only tools are currently allowed.",
+    "Do not claim execution success unless tool output confirms success.",
+  ];
+  return lines.join("\n");
+}
+
+export function buildAssistantInstructions(
+  params: BuildAssistantInstructionsParams & { persona?: AssistantPersona }
+): string {
+  if (params.persona === "seven_dtd_ops") {
+    return buildAssistantInstructionsSevenDtdOps(params);
+  }
+  return buildAssistantInstructionsDefault(params);
 }
 
 export function normalizeWebResearchParams(

@@ -73,6 +73,7 @@ vi.mock("../src/tools/assistant-profile.js", async () => {
 });
 
 import { queryLmStudioResponseWithTools } from "../src/discord/tool-loop.js";
+import { baseTools, sevenDtdReadOnlyTools } from "../src/discord/tool-registry.js";
 
 describe("queryLmStudioResponseWithTools", () => {
   beforeEach(() => {
@@ -111,6 +112,34 @@ describe("queryLmStudioResponseWithTools", () => {
     expect(secondInput[0]?.type).toBe("function_call_output");
     expect(secondInput[0]?.call_id).toBe("c1");
     expect(secondInput[0]?.output).toContain("Asia/Tokyo");
+  });
+
+  test("uses options.tools and options.persona for LM request", async () => {
+    lmMocks.createResponse.mockResolvedValueOnce({
+      id: "r1",
+      output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
+    });
+    const customTools = [
+      {
+        type: "function",
+        name: "custom_tool",
+        description: "custom",
+        parameters: { type: "object", properties: {}, required: [] },
+      },
+    ];
+
+    const out = await queryLmStudioResponseWithTools("status?", {
+      persona: "seven_dtd_ops",
+      tools: customTools,
+    });
+    expect(out).toBe("ok");
+
+    const options = lmMocks.createResponse.mock.calls[0]?.[2] as {
+      tools?: unknown[];
+      instructions?: string;
+    };
+    expect(options.tools).toEqual(customTools);
+    expect(options.instructions).toContain("7 Days to Die");
   });
 
   test("builds multimodal input when text and image URLs are provided", async () => {
@@ -316,6 +345,110 @@ describe("queryLmStudioResponseWithTools", () => {
     expect(firstCallArg.query).toBe("高野フルーツパーラー 池袋 開店時間");
     expect(firstCallArg.maxResults).toBe(1);
     expect(firstCallArg.maxPages).toBe(1);
+  });
+
+  test("keeps forced current_time behavior even when seven_dtd tools are enabled", async () => {
+    const tools = [...baseTools(), ...sevenDtdReadOnlyTools()];
+    lmMocks.createResponse
+      .mockResolvedValueOnce({
+        id: "r1",
+        output: [{ type: "message", content: [{ type: "output_text", text: "今は不明です" }] }],
+      })
+      .mockResolvedValueOnce({
+        id: "r2",
+        output: [{ type: "function_call", name: "current_time", call_id: "ct1", input: "{}" }],
+      })
+      .mockResolvedValueOnce({
+        id: "r3",
+        output: [{ type: "message", content: [{ type: "output_text", text: "Asia/Tokyo 22:35" }] }],
+      });
+
+    const out = await queryLmStudioResponseWithTools("今何時？", {
+      persona: "seven_dtd_ops",
+      tools,
+    });
+    expect(out).toBe("Asia/Tokyo 22:35");
+    const retryOptions = lmMocks.createResponse.mock.calls[1]?.[2] as { instructions?: string };
+    expect(retryOptions.instructions).toContain(
+      "Do not answer directly before calling current_time."
+    );
+  });
+
+  test("keeps forced web_research behavior even when seven_dtd tools are enabled", async () => {
+    const tools = [...baseTools(), ...sevenDtdReadOnlyTools()];
+    webResearchMocks.runWebResearchDigest.mockResolvedValue({
+      query: "明日の天気",
+      bullets: ["晴れ"],
+      citations: [],
+      errors: [],
+      meta: { cache_hit_search: false, cache_hit_pages: 0, elapsed_ms: 1 },
+    });
+    lmMocks.createResponse
+      .mockResolvedValueOnce({
+        id: "r1",
+        output: [{ type: "message", content: [{ type: "output_text", text: "わかりません" }] }],
+      })
+      .mockResolvedValueOnce({
+        id: "r2",
+        output: [
+          {
+            type: "function_call",
+            name: "web_research_digest",
+            call_id: "wr1",
+            input: JSON.stringify({ query: "明日の天気", max_results: 3 }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "r3",
+        output: [{ type: "message", content: [{ type: "output_text", text: "明日は晴れです" }] }],
+      });
+
+    const out = await queryLmStudioResponseWithTools("明日の天気は？", {
+      persona: "seven_dtd_ops",
+      tools,
+    });
+    expect(out).toBe("明日は晴れです");
+    const retryOptions = lmMocks.createResponse.mock.calls[1]?.[2] as { instructions?: string };
+    expect(retryOptions.instructions).toContain(
+      "Do not answer directly before calling web_research_digest."
+    );
+  });
+
+  test("keeps forced assistant_profile behavior even when seven_dtd tools are enabled", async () => {
+    const tools = [...baseTools(), ...sevenDtdReadOnlyTools()];
+    assistantProfileMocks.runAssistantProfile.mockReturnValue({
+      assistant_name: "suzume",
+      model: "unsloth/qwen3-vl-4b-instruct",
+      version: "1.0.0",
+      started_at: "2026-02-07T14:00:00.000Z",
+      uptime_day: 0.3,
+    });
+    lmMocks.createResponse
+      .mockResolvedValueOnce({
+        id: "r1",
+        output: [{ type: "message", content: [{ type: "output_text", text: "不明です" }] }],
+      })
+      .mockResolvedValueOnce({
+        id: "r2",
+        output: [{ type: "function_call", name: "assistant_profile", call_id: "ap1", input: "{}" }],
+      })
+      .mockResolvedValueOnce({
+        id: "r3",
+        output: [
+          { type: "message", content: [{ type: "output_text", text: "モデルは unsloth です" }] },
+        ],
+      });
+
+    const out = await queryLmStudioResponseWithTools("あなたのモデル名は？", {
+      persona: "seven_dtd_ops",
+      tools,
+    });
+    expect(out).toContain("モデル");
+    const retryOptions = lmMocks.createResponse.mock.calls[1]?.[2] as { instructions?: string };
+    expect(retryOptions.instructions).toContain(
+      "Do not answer directly before calling assistant_profile."
+    );
   });
 
   test("appends citation URLs when web_research_digest is used and final text has no URL", async () => {

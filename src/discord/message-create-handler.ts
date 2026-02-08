@@ -1,4 +1,5 @@
 import { extractImageAttachmentUrls } from "./message-utils.js";
+import type { ToolLoopOptions } from "./tool-loop.js";
 
 type DecideInput = {
   isAuthorBot: boolean;
@@ -59,7 +60,10 @@ type HandleMessageCreateDeps = {
       debugEnabled: boolean;
     }
   ) => Promise<string>;
-  queryLmStudioResponseWithTools: (input: LmInputPayload) => Promise<string>;
+  queryLmStudioResponseWithTools: (
+    input: LmInputPayload,
+    options?: ToolLoopOptions
+  ) => Promise<string>;
   buildReply: (body: string, mentionLabel: string) => string;
   buildLmErrorReply: (error: unknown) => string;
   postReply: (

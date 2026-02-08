@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-- `src/` は Discord bot エントリポイント (`index.ts`)、LM Studio 用 HTTP ラッパー (`lmstudio.ts`)、Discord 側 tool loop (`src/discord/tool-loop.ts`)、設定 (`src/config/*.ts`)、Web 調査ツール群 (`src/tools/web-research-digest.ts`, `src/web/*.ts`, `src/security/*.ts`, `src/cache/*.ts`, `src/extract/*.ts`) と `current_time` ツール (`src/tools/current-time.ts`) で構成。
+- `src/` は Discord bot エントリポイント (`index.ts`)、LM Studio 用 HTTP ラッパー (`lmstudio.ts`)、Discord 側 tool loop (`src/discord/tool-loop.ts`)、allowlist/context 判定 (`src/discord/allowlist.ts`, `src/discord/context-tools.ts`)、tool registry (`src/discord/tool-registry.ts`)、設定 (`src/config/*.ts`)、Web 調査ツール群 (`src/tools/web-research-digest.ts`, `src/web/*.ts`, `src/security/*.ts`, `src/cache/*.ts`, `src/extract/*.ts`)、`current_time` / `assistant_profile` / `seven-dtd-ops` ツール (`src/tools/*.ts`) と 7dtd API クライアント (`src/seven-dtd/client.ts`) で構成。
 - `tests/` の `*.test.ts` は `vitest` が読み込む前提。追加するテストは `tests/` 直下に置き、`vitest.config.ts` で Node + `tsconfig.test.json` が設定済み。
 - `.prettierrc` でフォーマットルールを定義しており、成果物 `dist/` や一時生成物は `.gitignore` で排除。
 - 依存性は `package.json`/`pnpm-lock.yaml` で管理し、`node_modules/.pnpm` 以下に展開される。手で追加したい場合は `pnpm add -D` で `devDependencies` に寄せる。
@@ -40,6 +40,6 @@
 ## Security & Configuration Tips
 
 - `src/config/lm.ts` は `LM_BASE_URL`/`LM_API_KEY`/`LM_MODEL` を参照するので、API キー類は `.env.local` などに入れて `.gitignore` に含める。
-- ボット名やデバッグ設定は `ASSISTANT_NAME` / `DEBUG_ASSISTANT`（必要に応じて `DEBUG_WEB_RESEARCH`）で制御する。
+- ボット名やデバッグ設定は `ASSISTANT_NAME` / `DEBUG_ASSISTANT`（必要に応じて `DEBUG_WEB_RESEARCH`）で制御する。7dtd 条件付きツール露出は `ALLOWED_GUILD_IDS` / `ALLOWED_CHANNEL_IDS` / `SEVEN_DTD_OPS_*` / `SEVEN_DTD_ENABLE_WRITE_TOOLS` で制御する。
 - LM Studio のスタブを使う場合、`LM_BASE_URL=http://localhost:1234` のように環境変数で切り替える。
 - `current_time` ツールや Zod スキーマを更新する際は `tests/structured-output.test.ts` も合わせて修正し、意図した検証（`issues` を含む）が継続的にカバーされているか確認。

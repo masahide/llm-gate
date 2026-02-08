@@ -8,6 +8,7 @@ import {
   needsWebResearch,
   normalizeWebResearchParams,
 } from "./tool-loop-policy.js";
+import type { AssistantPersona } from "./tool-loop-policy.js";
 import { createResponse, extractOutputText } from "../lmstudio.js";
 import type {
   LmConfig,
@@ -27,6 +28,12 @@ import {
   webResearchDigestTool,
 } from "../tools/web-research-digest.js";
 import { assistantProfileTool, runAssistantProfile } from "../tools/assistant-profile.js";
+import { baseTools } from "./tool-registry.js";
+import {
+  createSevenDtdOpsClientFromEnv,
+  readSevenDtdWriteToolsEnabled,
+} from "../seven-dtd/client.js";
+import { isSevenDtdToolName, runSevenDtdToolCall } from "../tools/seven-dtd-ops.js";
 
 type FunctionCallOutput = {
   type: "function_call_output";
@@ -39,9 +46,13 @@ type ExecuteCallResult = {
   webCitationUrls?: string[];
 };
 
-type ToolLoopOptions = {
+export type ToolLoopPersona = AssistantPersona;
+
+export type ToolLoopOptions = {
   lmConfig?: LmConfig;
   maxLoops?: number;
+  tools?: unknown[];
+  persona?: ToolLoopPersona;
 };
 
 export type ToolLoopInput = string | { text: string; imageUrls?: string[] };
@@ -229,7 +240,11 @@ function resolveFunctionCallInput(call: ResponseFunctionCall): {
 
 async function executeCall(
   call: ResponseFunctionCall,
-  fallbackQuery: string
+  fallbackQuery: string,
+  options: {
+    sevenDtdWriteEnabled: boolean;
+    sevenDtdClient: ReturnType<typeof createSevenDtdOpsClientFromEnv>;
+  }
 ): Promise<ExecuteCallResult> {
   const resolvedInput = resolveFunctionCallInput(call);
   debugLog("[tool debug] execute function_call", {
@@ -291,6 +306,23 @@ async function executeCall(
     };
   }
 
+  if (isSevenDtdToolName(call.name)) {
+    const sevenDtdInput = resolvedInput.payload;
+    const output = await runSevenDtdToolCall({
+      toolName: call.name,
+      writeEnabled: options.sevenDtdWriteEnabled,
+      client: options.sevenDtdClient,
+      ...(sevenDtdInput ? { rawInput: sevenDtdInput } : {}),
+    });
+    return {
+      output: {
+        type: "function_call_output",
+        call_id: call.call_id ?? call.name,
+        output,
+      },
+    };
+  }
+
   return {
     output: {
       type: "function_call_output",
@@ -323,7 +355,9 @@ export async function queryLmStudioResponseWithTools(
   const forceWebResearch = needsWebResearch(latestUserInput);
   const forceCurrentTime = needsCurrentTime(latestUserInput);
   const forceAssistantProfile = needsAssistantProfile(latestUserInput);
-  const tools = [currentTimeTool, webResearchDigestTool, assistantProfileTool];
+  const tools = options.tools ?? baseTools();
+  const sevenDtdClient = createSevenDtdOpsClientFromEnv();
+  const sevenDtdWriteEnabled = readSevenDtdWriteToolsEnabled();
   const jstNow = formatJstNow(new Date());
   const instructions = buildAssistantInstructions({
     assistantName: getAssistantName(),
@@ -333,6 +367,7 @@ export async function queryLmStudioResponseWithTools(
     forceWebResearch,
     forceCurrentTime,
     forceAssistantProfile,
+    persona: options.persona ?? "default",
   });
 
   debugRequestSummary({
@@ -422,7 +457,10 @@ export async function queryLmStudioResponseWithTools(
 
     const outputs: FunctionCallOutput[] = [];
     for (const call of calls) {
-      const executed = await executeCall(call, latestUserInput);
+      const executed = await executeCall(call, latestUserInput, {
+        sevenDtdWriteEnabled,
+        sevenDtdClient,
+      });
       outputs.push(executed.output);
       if (executed.webCitationUrls) {
         webCitationUrls.push(...executed.webCitationUrls);

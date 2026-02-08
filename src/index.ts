@@ -12,6 +12,7 @@ import { buildReply } from "./discord/reply-policy.js";
 import { buildTranscriptFromThread } from "./discord/thread-transcript.js";
 import { queryLmStudioResponseWithTools } from "./discord/tool-loop.js";
 import { getAssistantName, isAssistantDebugEnabled } from "./config/assistant.js";
+import { buildToolLoopOptionsForMessage } from "./discord/context-tools.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -39,6 +40,7 @@ function mentionLabel(): string {
 client.on(Events.MessageCreate, async (msg) => {
   const botUserId = client.user?.id;
   if (!botUserId) return;
+  const toolLoopOptions = buildToolLoopOptionsForMessage(msg);
   await handleMessageCreate(msg, {
     botUserId,
     mentionLabel: mentionLabel(),
@@ -50,7 +52,8 @@ client.on(Events.MessageCreate, async (msg) => {
     resolveTypingChannel,
     startTypingLoop,
     buildTranscriptFromThread,
-    queryLmStudioResponseWithTools,
+    queryLmStudioResponseWithTools: (input, options) =>
+      queryLmStudioResponseWithTools(input, { ...toolLoopOptions, ...(options ?? {}) }),
     buildReply,
     buildLmErrorReply,
     postReply,

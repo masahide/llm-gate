@@ -232,7 +232,7 @@ classDiagram
   class DiscordIndex {
     +onMessageCreate(msg)
     +resolveAllowedContext(msg) bool
-    +buildToolLoopOptions(allowed) ToolLoopOptions
+    +buildToolLoopOptionsForMessage(msg) ToolLoopOptions
   }
 
   class Allowlist {
@@ -243,6 +243,11 @@ classDiagram
 
   class MessageCreateHandler {
     +handleMessageCreate(msg, deps)
+  }
+
+  class ContextTools {
+    +buildToolLoopOptionsForMessage(msg) ToolLoopOptions
+    +resolvePersonaForContext(allow) ToolLoopPersona
   }
 
   class ToolLoop {
@@ -272,7 +277,9 @@ classDiagram
 
   DiscordIndex --> Allowlist
   DiscordIndex --> MessageCreateHandler
-  DiscordIndex --> ToolRegistry
+  DiscordIndex --> ContextTools
+  ContextTools --> ToolRegistry
+  ContextTools --> Allowlist
   DiscordIndex --> ToolLoop
   ToolLoop --> PersonaBuilder
   ToolLoop --> ToolRegistry
@@ -346,113 +353,113 @@ sequenceDiagram
 
 ### Phase 1 設計と準備
 
-* [ ] 要件と仕様の確定 受け入れ条件の確定
+* [x] 要件と仕様の確定 受け入れ条件の確定
   成果物: 本 plan をベースに TODO を確定
 
-* [ ] インターフェース契約の確定 スキーマと例の追加
+* [x] インターフェース契約の確定 スキーマと例の追加
   対象: `.env.example` があれば更新。なければ README に追記
 
-* [ ] Mermaid図の作成 更新
+* [x] Mermaid図の作成 更新
   対象: plan 内の図を必要に応じて更新
 
-* [ ] インターフェース 型定義の作成
+* [x] インターフェース 型定義の作成
   対象ファイル案
 
   * `src/discord/tool-loop.ts` ToolLoopOptions 拡張
   * `src/discord/tool-loop-policy.ts` persona 対応
   * `src/discord/allowlist.ts` 新規
 
-* [ ] テスト基盤の確認
+* [x] テスト基盤の確認
   既存 Vitest のモック方針に合わせる
 
 ### Phase 2 Allowlist 判定の実装
 
-* [ ] Test allowlist の未設定時は常に false Red
+* [x] Test allowlist の未設定時は常に false Red
   対象: `tests/allowlist.test.ts` 新規
 
-* [ ] Impl allowlist 判定を追加 Green
+* [x] Impl allowlist 判定を追加 Green
   対象: `src/discord/allowlist.ts` 新規
 
-* [ ] Refactor 既存コードとの重複排除
+* [x] Refactor 既存コードとの重複排除
   文字列パースなどの共通化
 
-* [ ] Integration なし
+* [x] Integration なし
 
-* [ ] Docs 環境変数の説明追記
+* [x] Docs 環境変数の説明追記
 
 ### Phase 3 ToolSet と Persona の条件注入
 
-* [ ] Test allowed true でのみ 7dtd tools が LM に渡る Red
+* [x] Test allowed true でのみ 7dtd tools が LM に渡る Red
   対象: `tests/tool-loop.test.ts` に追加
   `createResponse` の引数 `tools` を検証
 
-* [ ] Impl tool-loop に options.tools と options.persona を導入 Green
+* [x] Impl tool-loop に options.tools と options.persona を導入 Green
   対象: `src/discord/tool-loop.ts` `src/discord/tool-loop-policy.ts`
 
-* [ ] Test `handleMessageCreate` deps の query シグネチャ更新 Red
+* [x] Test `handleMessageCreate` deps の query シグネチャ更新 Red
   対象: `tests/message-create-handler.test.ts` と関連モック
 
-* [ ] Impl `handleMessageCreate` deps 型を `queryLmStudioResponseWithTools(input, options)` へ更新 Green
+* [x] Impl `handleMessageCreate` deps 型を `queryLmStudioResponseWithTools(input, options)` へ更新 Green
   対象: `src/discord/message-create-handler.ts` `src/index.ts`
 
-* [ ] Refactor instructions 生成を persona 別関数に整理
+* [x] Refactor instructions 生成を persona 別関数に整理
   `buildAssistantInstructionsDefault` と `buildAssistantInstructionsSevenDtdOps` のように分離
 
-* [ ] Integration なし
+* [x] Integration なし
 
-* [ ] Docs 許可チャンネル設計を README に追記
+* [x] Docs 許可チャンネル設計を README に追記
 
 ### Phase 4 index.ts でのコンテキスト評価と注入
 
-* [ ] Test index 相当の allowlist 結果で注入が切り替わる Red
+* [x] Test index 相当の allowlist 結果で注入が切り替わる Red
   直接 index はテストしにくいので、注入関数を切り出して unit テストする
   対象: `src/discord/context-tools.ts` のようなファクトリ関数を新規にしてテスト
 
-* [ ] Impl MessageCreate の先頭で allowed を判定し、query をラップして deps に渡す Green
+* [x] Impl MessageCreate の先頭で allowed を判定し、query をラップして deps に渡す Green
   対象: `src/index.ts`
 
-* [ ] Refactor 依存注入の責務を整理
+* [x] Refactor 依存注入の責務を整理
   allowlist と toolset の知識を index に閉じるか、専用モジュールに寄せる
 
-* [ ] Integration なし
+* [x] Integration なし
 
-* [ ] Docs 運用手順の例を追記
+* [x] Docs 運用手順の例を追記
 
 ### Phase 5 7dtd ツール定義とクライアント骨格
 
-* [ ] Test read-only tool（seven_dtd_get_status summary logs）の schema と token 未設定時エラー Red
+* [x] Test read-only tool（seven_dtd_get_status summary logs）の schema と token 未設定時エラー Red
   対象: `tests/seven-dtd-tools.test.ts` 新規
 
-* [ ] Impl `src/tools/seven-dtd-ops.ts` と `src/seven-dtd/client.ts` 追加 Green
+* [x] Impl `src/tools/seven-dtd-ops.ts` と `src/seven-dtd/client.ts` 追加 Green
   read-only を既定で有効化し、破壊系は未実装または feature flag で無効
   `executeCall` に分岐追加
   対象: `src/discord/tool-loop.ts`
 
-* [ ] Refactor エラー整形と出力 JSON を共通化
+* [x] Refactor エラー整形と出力 JSON を共通化
 
-* [ ] Integration なし
+* [x] Integration なし
 
-* [ ] Docs 7dtd API 設定を追記
+* [x] Docs 7dtd API 設定を追記
 
 ### Phase 6 破壊系ツールの段階導入
 
-* [ ] Test start stop restart exec の無効時挙動と有効化時挙動 Red
+* [x] Test start stop restart exec の無効時挙動と有効化時挙動 Red
   対象: `tests/seven-dtd-tools.test.ts` 追記
 
-* [ ] Impl 破壊系ツールの feature flag と安全なデフォルト Green
+* [x] Impl 破壊系ツールの feature flag と安全なデフォルト Green
   対象: `src/tools/seven-dtd-ops.ts` `src/discord/tool-loop.ts` `README.md`
 
-* [ ] Refactor read-only と write の tool registry 分離
+* [x] Refactor read-only と write の tool registry 分離
   追加予定: `src/discord/tool-registry.ts`
 
 ### Phase 7 統合と検証
 
-* [ ] 全体テストの実行
-* [ ] エッジケースの動作確認
+* [x] 全体テストの実行
+* [x] エッジケースの動作確認
   スレッド、DM、allowlist 空、空白混じり
-* [ ] ログと例外の確認
+* [x] ログと例外の確認
   token がログに出ていないこと
-* [ ] ドキュメント更新 仕様 契約 図
+* [x] ドキュメント更新 仕様 契約 図
 
 ---
 
@@ -460,16 +467,16 @@ sequenceDiagram
 
 ### 8.1 機能DoD Functional DoD
 
-* [ ] 受け入れ条件がすべて満たされていること
-* [ ] 既知の制約が明文化され、想定通りであること
-* [ ] 許可チャンネルでのみ 7dtd ツールが LM に露出することがテストで保証されていること
+* [x] 受け入れ条件がすべて満たされていること
+* [x] 既知の制約が明文化され、想定通りであること
+* [x] 許可チャンネルでのみ 7dtd ツールが LM に露出することがテストで保証されていること
 
 ### 8.2 品質DoD Quality DoD
 
-* [ ] 全てのテストがパスしていること
-* [ ] Linter Formatterのエラーがないこと
-* [ ] 不要なデバッグコードが削除されていること
-* [ ] 主要な変更点がドキュメントに反映されていること
+* [x] 全てのテストがパスしていること
+* [x] Linter Formatterのエラーがないこと
+* [x] 不要なデバッグコードが削除されていること
+* [x] 主要な変更点がドキュメントに反映されていること
 
 ---
 
