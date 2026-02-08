@@ -24,7 +24,28 @@ export type ResponsesResponse = {
   [key: string]: unknown;
 };
 
-export type ResponseInput = string | Record<string, unknown> | Array<Record<string, unknown>>;
+export type InputTextContent = {
+  type: "input_text";
+  text: string;
+};
+
+export type InputImageContent = {
+  type: "input_image";
+  image_url: string;
+};
+
+export type UserInputMessage = {
+  role: "user";
+  content: Array<InputTextContent | InputImageContent>;
+};
+
+export type FunctionCallOutputInput = {
+  type: "function_call_output";
+  call_id: string;
+  output: string;
+};
+
+export type ResponseInput = string | UserInputMessage[] | FunctionCallOutputInput[];
 
 export type LmToolDefinition = {
   type: "function";
@@ -53,6 +74,16 @@ export type LmConfig = {
   model: string;
 };
 
+type ResponseRequestBody = {
+  model: string;
+  max_output_tokens: number;
+  input: ResponseInput;
+  previous_response_id?: string;
+  temperature?: number;
+  instructions?: string;
+  tools?: LmToolDefinition[];
+};
+
 export function extractOutputText(resp: ResponsesResponse): string {
   const out = resp.output;
   if (!Array.isArray(out)) return "";
@@ -72,6 +103,24 @@ export function extractOutputText(resp: ResponsesResponse): string {
   return chunks.join("");
 }
 
+export function buildResponseRequestBody(
+  cfg: LmConfig,
+  input: ResponseInput,
+  opts: CreateResponseOptions = {}
+): ResponseRequestBody {
+  const body: ResponseRequestBody = {
+    model: cfg.model,
+    max_output_tokens: opts.maxOutputTokens ?? 1024,
+    input,
+  };
+
+  if (opts.previousResponseId) body.previous_response_id = opts.previousResponseId;
+  if (typeof opts.temperature === "number") body.temperature = opts.temperature;
+  if (opts.instructions) body.instructions = opts.instructions;
+  if (Array.isArray(opts.tools) && opts.tools.length) body.tools = opts.tools;
+  return body;
+}
+
 export async function createResponse(
   cfg: LmConfig,
   input: ResponseInput,
@@ -81,17 +130,7 @@ export async function createResponse(
   const timeoutMs = opts.timeoutMs ?? 30000;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  const body: Record<string, unknown> = {
-    model: cfg.model,
-    max_output_tokens: opts.maxOutputTokens ?? 1024,
-  };
-
-  body.input = input;
-
-  if (opts.previousResponseId) body.previous_response_id = opts.previousResponseId;
-  if (typeof opts.temperature === "number") body.temperature = opts.temperature;
-  if (opts.instructions) body.instructions = opts.instructions;
-  if (Array.isArray(opts.tools) && opts.tools.length) body.tools = opts.tools;
+  const body = buildResponseRequestBody(cfg, input, opts);
 
   let res: Response;
   try {

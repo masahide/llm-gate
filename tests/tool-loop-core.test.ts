@@ -58,7 +58,9 @@ describe("tool-loop-core", () => {
 
     expect(Array.isArray(input)).toBe(true);
     if (!Array.isArray(input)) return;
-    const content = input[0]?.content as Array<{ type: string; image_url?: string }>;
+    const first = input[0];
+    if (!first || !("role" in first) || first.role !== "user") return;
+    const content = first.content as Array<{ type: string; image_url?: string }>;
     const imageItems = content.filter((item) => item.type === "input_image");
     expect(imageItems).toHaveLength(4);
   });

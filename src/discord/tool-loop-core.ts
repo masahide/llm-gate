@@ -1,4 +1,10 @@
-import type { ResponseFunctionCall, ResponseInput, ResponsesResponse } from "../lmstudio.js";
+import type {
+  InputImageContent,
+  InputTextContent,
+  ResponseFunctionCall,
+  ResponseInput,
+  ResponsesResponse,
+} from "../lmstudio.js";
 import type { LmToolDefinition } from "../lmstudio.js";
 import {
   parseWebResearchDigestParams,
@@ -18,9 +24,9 @@ export function buildInitialResponseInput(
     .slice(0, MAX_INPUT_IMAGE_URLS);
   if (imageUrls.length === 0) return text;
 
-  const content = [
+  const content: Array<InputTextContent | InputImageContent> = [
     { type: "input_text", text },
-    ...imageUrls.map((url) => ({ type: "input_image", image_url: url })),
+    ...imageUrls.map((url): InputImageContent => ({ type: "input_image", image_url: url })),
   ];
   return [{ role: "user", content }];
 }

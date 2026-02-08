@@ -9,7 +9,12 @@ import {
 } from "./tool-loop-policy.js";
 import type { AssistantPersona } from "./tool-loop-policy.js";
 import { createResponse, extractOutputText } from "../lmstudio.js";
-import type { LmConfig, LmToolDefinition, ResponseFunctionCall } from "../lmstudio.js";
+import type {
+  FunctionCallOutputInput,
+  LmConfig,
+  LmToolDefinition,
+  ResponseFunctionCall,
+} from "../lmstudio.js";
 import {
   currentTimeTool,
   formatCurrentTime,
@@ -43,14 +48,8 @@ import {
   resolveLmTimeoutMs,
 } from "./tool-loop-debug.js";
 
-type FunctionCallOutput = {
-  type: "function_call_output";
-  call_id: string;
-  output: string;
-};
-
 type ExecuteCallResult = {
-  output: FunctionCallOutput;
+  output: FunctionCallOutputInput;
   webCitationUrls?: string[];
 };
 
@@ -82,7 +81,7 @@ type ResolvedCallContext = {
 
 type ToolCallHandler = (ctx: ResolvedCallContext) => Promise<ExecuteCallResult> | ExecuteCallResult;
 
-function asFunctionCallOutput(call: ResponseFunctionCall, output: string): FunctionCallOutput {
+function asFunctionCallOutput(call: ResponseFunctionCall, output: string): FunctionCallOutputInput {
   return {
     type: "function_call_output",
     call_id: call.call_id ?? call.name,
@@ -282,7 +281,7 @@ export async function queryLmStudioResponseWithTools(
       return withCitations || "少しお待ちください、確認しています。";
     }
 
-    const outputs: FunctionCallOutput[] = [];
+    const outputs: FunctionCallOutputInput[] = [];
     for (const call of calls) {
       const callStartedAt = Date.now();
       const executed = await executeCall(call, latestUserInput, {
