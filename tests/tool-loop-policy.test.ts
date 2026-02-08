@@ -70,6 +70,26 @@ describe("tool-loop-policy", () => {
     expect(forced).toContain("Do not send an empty input to web_research_digest");
   });
 
+  test("buildAssistantInstructions includes 7dtd ops guardrails for seven_dtd_ops persona", () => {
+    const sevenDtd = buildAssistantInstructions({
+      assistantName: "suzume",
+      todayJst: "2026-02-08",
+      weekdayJst: "Sunday",
+      nowJst: "2026-02-08 13:45:14",
+      forceWebResearch: false,
+      forceCurrentTime: false,
+      forceAssistantProfile: false,
+      persona: "seven_dtd_ops",
+    });
+    expect(sevenDtd).toContain("Allowed server commands for seven_dtd_exec_command are strictly:");
+    expect(sevenDtd).toContain(
+      "Before maintenance workflow, prefer: lp -> say (if players are online) -> sa."
+    );
+    expect(sevenDtd).toContain(
+      "Do not claim execution success unless tool output confirms success."
+    );
+  });
+
   test("normalizeWebResearchParams falls back to user query when tool input query is empty", () => {
     const parsed: WebResearchDigestParams = {
       query: "",
