@@ -1,6 +1,12 @@
 import { logger } from "../observability/logger.js";
 import type { RequestContext } from "../observability/request-context.js";
 import { SevenDtdCircuitBreaker, readCircuitBreakerConfigFromEnv } from "./circuit-breaker.js";
+import {
+  buildHttpErrorMessage,
+  extractErrorCauseInfo,
+  normalizeRequestError,
+  parseSuccessResponseBody,
+} from "./client-core.js";
 
 export type SevenDtdOpsClient = {
   getStatus: (ctx?: RequestContext) => Promise<unknown>;
@@ -64,18 +70,6 @@ function encodeQuery(params: Record<string, string | number | boolean | undefine
   return query ? `?${query}` : "";
 }
 
-function errorCauseInfo(error: Error): { name: string; code: string } {
-  const cause = (error as Error & { cause?: unknown }).cause;
-  if (!cause || typeof cause !== "object") {
-    return { name: "", code: "" };
-  }
-  const named = cause as { name?: unknown; code?: unknown };
-  return {
-    name: typeof named.name === "string" ? named.name : "",
-    code: typeof named.code === "string" ? named.code : "",
-  };
-}
-
 async function requestJson(
   config: SevenDtdOpsClientConfig,
   method: RequestMethod,
@@ -112,30 +106,10 @@ async function requestJson(
       breaker?.recordFailure();
       failureRecorded = true;
       const body = await response.text();
-      const trimmed = body.slice(0, 300);
-      const redacted = config.token ? trimmed.split(config.token).join("[REDACTED]") : trimmed;
-      throw new Error(`seven_dtd_http_error:${response.status}:${redacted}`);
+      throw new Error(buildHttpErrorMessage(response.status, body, config.token));
     }
 
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      try {
-        const data = (await response.json()) as unknown;
-        breaker?.recordSuccess();
-        logger.info("[seven_dtd] request success", ctx, {
-          "tool.call.durationMs": Date.now() - startedAt,
-          "http.status": response.status,
-          "http.durationMs": Date.now() - startedAt,
-          "http.endpoint": endpoint,
-        });
-        return data;
-      } catch {
-        breaker?.recordFailure();
-        failureRecorded = true;
-        throw new Error("seven_dtd_invalid_json");
-      }
-    }
-    const textData = { ok: true, text: await response.text() };
+    const data = await parseSuccessResponseBody(response);
     breaker?.recordSuccess();
     logger.info("[seven_dtd] request success", ctx, {
       "tool.call.durationMs": Date.now() - startedAt,
@@ -143,7 +117,7 @@ async function requestJson(
       "http.durationMs": Date.now() - startedAt,
       "http.endpoint": endpoint,
     });
-    return textData;
+    return data;
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       breaker?.recordFailure();
@@ -151,13 +125,8 @@ async function requestJson(
       throw new Error("seven_dtd_timeout");
     }
     const rawError = error instanceof Error ? error : new Error(String(error));
-    const cause = errorCauseInfo(rawError);
-    const hasKnownCode = rawError.message.startsWith("seven_dtd_");
-    const normalizedError = hasKnownCode
-      ? rawError
-      : new Error(
-          `seven_dtd_network_error:${cause.code || cause.name || rawError.message || "fetch_failed"}`
-        );
+    const cause = extractErrorCauseInfo(rawError);
+    const normalizedError = normalizeRequestError(error);
     const code = normalizedError.message;
     if (!code.startsWith("seven_dtd_circuit_open") && !failureRecorded) {
       breaker?.recordFailure();

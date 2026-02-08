@@ -5,14 +5,13 @@ import {
   needsAssistantProfile,
   needsCurrentTime,
   needsWebResearch,
-  normalizeWebResearchParams,
 } from "../src/discord/tool-loop-policy.js";
-import type { WebResearchDigestParams } from "../src/tools/web-research-digest.js";
 
 describe("tool-loop-policy", () => {
   test("needsWebResearch detects time-sensitive topics", () => {
     expect(needsWebResearch("明日の天気は？")).toBe(true);
     expect(needsWebResearch("衆議院選挙のニュースを教えて")).toBe(true);
+    expect(needsWebResearch("WEATHER FORECAST today")).toBe(true);
     expect(needsWebResearch("こんにちは")).toBe(false);
   });
 
@@ -25,6 +24,7 @@ describe("tool-loop-policy", () => {
   test("needsAssistantProfile detects profile questions", () => {
     expect(needsAssistantProfile("あなたのモデル名は？")).toBe(true);
     expect(needsAssistantProfile("version と uptime を教えて")).toBe(true);
+    expect(needsAssistantProfile("WHICH MODEL are you using?")).toBe(true);
     expect(needsAssistantProfile("今日の天気は？")).toBe(false);
   });
 
@@ -35,6 +35,15 @@ describe("tool-loop-policy", () => {
       "user: hamu: 今日の天気は？",
     ].join("\n");
     expect(extractLatestUserInput(transcript)).toBe("今日の天気は？");
+  });
+
+  test("extractLatestUserInput handles spacing and case variations in user prefix", () => {
+    const transcript = [
+      "USER: hamu: 最初の質問",
+      "assistant: 了解しました",
+      "user : hamu: 池袋の天気は？",
+    ].join("\n");
+    expect(extractLatestUserInput(transcript)).toBe("池袋の天気は？");
   });
 
   test("buildAssistantInstructions includes required directives", () => {
@@ -83,23 +92,13 @@ describe("tool-loop-policy", () => {
     });
     expect(sevenDtd).toContain("Allowed server commands for seven_dtd_exec_command are strictly:");
     expect(sevenDtd).toContain(
+      "You can use current_time, web_research_digest, and assistant_profile tools when needed."
+    );
+    expect(sevenDtd).toContain(
       "Before maintenance workflow, prefer: lp -> say (if players are online) -> sa."
     );
     expect(sevenDtd).toContain(
       "Do not claim execution success unless tool output confirms success."
     );
-  });
-
-  test("normalizeWebResearchParams falls back to user query when tool input query is empty", () => {
-    const parsed: WebResearchDigestParams = {
-      query: "",
-      maxResults: 3,
-      maxPages: 2,
-      focus: "",
-    };
-    const normalized = normalizeWebResearchParams(parsed, "  日本のAIニュース  ");
-    expect(normalized.query).toBe("日本のAIニュース");
-    expect(normalized.maxResults).toBe(3);
-    expect(normalized.maxPages).toBe(2);
   });
 });

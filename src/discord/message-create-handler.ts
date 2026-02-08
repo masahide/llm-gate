@@ -1,4 +1,10 @@
 import { extractImageAttachmentUrls } from "./message-utils.js";
+import {
+  buildLmInputPayload,
+  pickThreadOwnerId,
+  resolveTargetThread,
+  type LmInputPayload,
+} from "./message-create-core.js";
 import type { ToolLoopOptions } from "./tool-loop.js";
 import type { RequestContext } from "../observability/request-context.js";
 import { logger } from "../observability/logger.js";
@@ -33,8 +39,6 @@ type MessageLike = {
   reply: (text: string) => Promise<unknown>;
   react: (emoji: string) => Promise<unknown>;
 };
-
-type LmInputPayload = string | { text: string; imageUrls: string[] };
 
 type HandleMessageCreateDeps = {
   botUserId: string;
@@ -95,10 +99,7 @@ export async function handleMessageCreate(
   const errorLog = deps.error ?? console.error;
   const mentionsBot = msg.mentions.has(deps.botUserId);
   const threadChannel = msg.channel.isThread() ? msg.channel : null;
-  const threadOwnerId =
-    threadChannel && "ownerId" in threadChannel && typeof threadChannel.ownerId === "string"
-      ? threadChannel.ownerId
-      : null;
+  const threadOwnerId = pickThreadOwnerId(threadChannel);
   const body = deps.extractBody(msg, deps.botUserId);
   const imageUrls = extractImageAttachmentUrls(msg);
 
@@ -119,7 +120,7 @@ export async function handleMessageCreate(
     return;
   }
 
-  const targetThread = threadChannel && decision.useThreadContext ? threadChannel : null;
+  const targetThread = resolveTargetThread(threadChannel, decision.useThreadContext);
   if (decision.shouldReact) {
     try {
       await msg.react("👀");
@@ -142,19 +143,21 @@ export async function handleMessageCreate(
     : null;
 
   try {
-    let lmInputText = body;
+    let transcript = "";
     if (targetThread) {
-      const transcript = await deps.buildTranscriptFromThread(targetThread, {
+      transcript = await deps.buildTranscriptFromThread(targetThread, {
         botUserId: deps.botUserId,
         maxThreadMessages: MAX_THREAD_MESSAGES,
         fetchLimitMax: DISCORD_FETCH_LIMIT_MAX,
         maxTranscriptChars: MAX_TRANSCRIPT_CHARS,
         debugEnabled: deps.debugBot,
       });
-      if (transcript) lmInputText = transcript;
     }
-    const lmInput: LmInputPayload =
-      imageUrls.length > 0 ? { text: lmInputText, imageUrls } : lmInputText;
+    const lmInput: LmInputPayload = buildLmInputPayload({
+      body,
+      transcript,
+      imageUrls,
+    });
 
     let reply: string;
     try {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { LmToolDefinition } from "../src/lmstudio.js";
 
 type MockResponse = {
   id?: string;
@@ -119,12 +120,12 @@ describe("queryLmStudioResponseWithTools", () => {
       id: "r1",
       output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
     });
-    const customTools = [
+    const customTools: LmToolDefinition[] = [
       {
         type: "function",
         name: "custom_tool",
         description: "custom",
-        parameters: { type: "object", properties: {}, required: [] },
+        parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
       },
     ];
 
@@ -135,7 +136,7 @@ describe("queryLmStudioResponseWithTools", () => {
     expect(out).toBe("ok");
 
     const options = lmMocks.createResponse.mock.calls[0]?.[2] as {
-      tools?: unknown[];
+      tools?: LmToolDefinition[];
       instructions?: string;
     };
     expect(options.tools).toEqual(customTools);
@@ -344,6 +345,48 @@ describe("queryLmStudioResponseWithTools", () => {
     };
     expect(firstCallArg.query).toBe("高野フルーツパーラー 池袋 開店時間");
     expect(firstCallArg.maxResults).toBe(1);
+    expect(firstCallArg.maxPages).toBe(1);
+  });
+
+  test("parses web_research_digest arguments field when input is whitespace only", async () => {
+    webResearchMocks.runWebResearchDigest.mockResolvedValue({
+      query: "高野フルーツパーラー 池袋 開店時間",
+      bullets: ["営業時間は11:00から"],
+      citations: [],
+      errors: [],
+      meta: { cache_hit_search: false, cache_hit_pages: 0, elapsed_ms: 1 },
+    });
+    lmMocks.createResponse
+      .mockResolvedValueOnce({
+        id: "r1",
+        output: [
+          {
+            type: "function_call",
+            name: "web_research_digest",
+            call_id: "wr-args-whitespace",
+            input: "   ",
+            arguments: JSON.stringify({
+              query: "高野フルーツパーラー 池袋 開店時間",
+              max_results: 2,
+              max_pages: 1,
+            }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: "r2",
+        output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
+      });
+
+    const out = await queryLmStudioResponseWithTools("池袋のタカノフルーツパーラーの営業時間は？");
+    expect(out).toBe("ok");
+    const firstCallArg = webResearchMocks.runWebResearchDigest.mock.calls[0]?.[0] as {
+      query: string;
+      maxResults: number;
+      maxPages: number;
+    };
+    expect(firstCallArg.query).toBe("高野フルーツパーラー 池袋 開店時間");
+    expect(firstCallArg.maxResults).toBe(2);
     expect(firstCallArg.maxPages).toBe(1);
   });
 

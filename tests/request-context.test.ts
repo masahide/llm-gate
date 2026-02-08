@@ -1,8 +1,23 @@
 import { describe, expect, test } from "vitest";
 import { buildRequestContext } from "../src/observability/request-context.js";
+import type { LmToolDefinition } from "../src/lmstudio.js";
 
 describe("request context", () => {
   test("builds context from thread message", () => {
+    const tools: LmToolDefinition[] = [
+      {
+        type: "function",
+        name: "current_time",
+        description: "time",
+        parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+      },
+      {
+        type: "function",
+        name: "seven_dtd_get_status",
+        description: "status",
+        parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+      },
+    ];
     const ctx = buildRequestContext(
       {
         id: "m1",
@@ -15,7 +30,7 @@ describe("request context", () => {
       },
       {
         persona: "seven_dtd_ops",
-        tools: [{ name: "current_time" }, { name: "seven_dtd_get_status" }],
+        tools,
       }
     );
 

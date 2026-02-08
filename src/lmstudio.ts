@@ -26,12 +26,24 @@ export type ResponsesResponse = {
 
 export type ResponseInput = string | Record<string, unknown> | Array<Record<string, unknown>>;
 
+export type LmToolDefinition = {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: {
+    type: string;
+    properties: Record<string, unknown>;
+    required?: readonly string[] | string[];
+    additionalProperties?: boolean;
+  };
+};
+
 export type CreateResponseOptions = {
   previousResponseId?: string | undefined;
   temperature?: number | undefined;
   instructions?: string | undefined;
   maxOutputTokens?: number | undefined;
-  tools?: unknown[] | undefined;
+  tools?: LmToolDefinition[] | undefined;
   timeoutMs?: number | undefined;
 };
 

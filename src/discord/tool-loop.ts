@@ -1,4 +1,4 @@
-import { getAssistantName, isAssistantDebugEnabled } from "../config/assistant.js";
+import { getAssistantName } from "../config/assistant.js";
 import { cfg } from "../config/lm.js";
 import {
   buildAssistantInstructions,
@@ -6,27 +6,16 @@ import {
   needsAssistantProfile,
   needsCurrentTime,
   needsWebResearch,
-  normalizeWebResearchParams,
 } from "./tool-loop-policy.js";
 import type { AssistantPersona } from "./tool-loop-policy.js";
 import { createResponse, extractOutputText } from "../lmstudio.js";
-import type {
-  LmConfig,
-  ResponseFunctionCall,
-  ResponseInput,
-  ResponsesResponse,
-} from "../lmstudio.js";
+import type { LmConfig, LmToolDefinition, ResponseFunctionCall } from "../lmstudio.js";
 import {
   currentTimeTool,
   formatCurrentTime,
   parseCurrentTimeParams,
 } from "../tools/current-time.js";
-import {
-  parseWebResearchDigestParams,
-  runWebResearchDigest,
-  type WebResearchDigestOutput,
-  webResearchDigestTool,
-} from "../tools/web-research-digest.js";
+import { runWebResearchDigest, webResearchDigestTool } from "../tools/web-research-digest.js";
 import { assistantProfileTool, runAssistantProfile } from "../tools/assistant-profile.js";
 import { baseTools } from "./tool-registry.js";
 import {
@@ -36,6 +25,23 @@ import {
 import { isSevenDtdToolName, runSevenDtdToolCall } from "../tools/seven-dtd-ops.js";
 import type { RequestContext } from "../observability/request-context.js";
 import { logger } from "../observability/logger.js";
+import {
+  appendCitationsIfNeeded,
+  buildForcedRetryPlan,
+  buildInitialResponseInput,
+  collectFunctionCalls,
+  extractWebCitationUrls,
+  extractEnabledToolNames,
+  hasFunctionCall,
+  normalizeWebResearchDigestCall,
+  resolveFunctionCallInput,
+} from "./tool-loop-core.js";
+import {
+  debugLog,
+  debugRequestSummary,
+  formatJstNow,
+  resolveLmTimeoutMs,
+} from "./tool-loop-debug.js";
 
 type FunctionCallOutput = {
   type: "function_call_output";
@@ -53,201 +59,100 @@ export type ToolLoopPersona = AssistantPersona;
 export type ToolLoopOptions = {
   lmConfig?: LmConfig;
   maxLoops?: number;
-  tools?: unknown[];
+  tools?: LmToolDefinition[];
   persona?: ToolLoopPersona;
 };
 
 export type ToolLoopInput = string | { text: string; imageUrls?: string[] };
 
 const DEFAULT_MAX_LOOPS = 4;
-const DEFAULT_LM_TIMEOUT_MS = 90000;
-const MAX_INPUT_IMAGE_URLS = 4;
 
-type PayloadSizeStats = {
-  shape: "string" | "array" | "object" | "unknown";
-  chars: number;
-  bytes: number;
-  preview: string;
+type ExecuteCallOptions = {
+  sevenDtdWriteEnabled: boolean;
+  sevenDtdClient: ReturnType<typeof createSevenDtdOpsClientFromEnv>;
+  requestContext?: RequestContext;
 };
 
-function isDebugEnabled(): boolean {
-  return process.env.DEBUG_WEB_RESEARCH === "true" || isAssistantDebugEnabled();
-}
+type ResolvedCallContext = {
+  call: ResponseFunctionCall;
+  resolvedInput: ReturnType<typeof resolveFunctionCallInput>;
+  fallbackQuery: string;
+  options: ExecuteCallOptions;
+};
 
-function debugLog(message: string, payload: Record<string, unknown>): void {
-  if (!isDebugEnabled()) return;
-  console.debug(message, payload);
-}
+type ToolCallHandler = (ctx: ResolvedCallContext) => Promise<ExecuteCallResult> | ExecuteCallResult;
 
-function resolveLmTimeoutMs(): number {
-  const raw = process.env.LM_TIMEOUT_MS;
-  const parsed = raw ? Number(raw) : NaN;
-  if (Number.isFinite(parsed) && parsed >= 1000) return Math.floor(parsed);
-  return DEFAULT_LM_TIMEOUT_MS;
-}
-
-function formatJstNow(now: Date): { todayJst: string; weekdayJst: string; nowJst: string } {
-  const dateParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const timeParts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Tokyo",
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(now);
-
-  const year = dateParts.find((part) => part.type === "year")?.value ?? "0000";
-  const month = dateParts.find((part) => part.type === "month")?.value ?? "00";
-  const day = dateParts.find((part) => part.type === "day")?.value ?? "00";
-  const hour = timeParts.find((part) => part.type === "hour")?.value ?? "00";
-  const minute = timeParts.find((part) => part.type === "minute")?.value ?? "00";
-  const second = timeParts.find((part) => part.type === "second")?.value ?? "00";
-  const todayJst = `${year}-${month}-${day}`;
-  const weekdayJst = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Tokyo",
-    weekday: "long",
-  }).format(now);
-
+function asFunctionCallOutput(call: ResponseFunctionCall, output: string): FunctionCallOutput {
   return {
-    todayJst,
-    weekdayJst,
-    nowJst: `${todayJst} ${hour}:${minute}:${second}`,
+    type: "function_call_output",
+    call_id: call.call_id ?? call.name,
+    output,
   };
 }
 
-function measurePayloadSize(input: ResponseInput): PayloadSizeStats {
-  if (typeof input === "string") {
-    return {
-      shape: "string",
-      chars: input.length,
-      bytes: Buffer.byteLength(input, "utf8"),
-      preview: input.slice(0, 200),
-    };
-  }
+const currentTimeHandler: ToolCallHandler = ({ call, resolvedInput }) => {
+  const params = parseCurrentTimeParams(resolvedInput.payload);
+  const output = formatCurrentTime(params);
+  return { output: asFunctionCallOutput(call, output) };
+};
 
-  const shape = Array.isArray(input) ? "array" : typeof input === "object" ? "object" : "unknown";
-  try {
-    const json = JSON.stringify(input);
-    return {
-      shape,
-      chars: json.length,
-      bytes: Buffer.byteLength(json, "utf8"),
-      preview: json.slice(0, 200),
-    };
-  } catch {
-    return {
-      shape,
-      chars: -1,
-      bytes: -1,
-      preview: "[unserializable payload]",
-    };
-  }
-}
-
-function measureTextSize(text: string): { chars: number; bytes: number; preview: string } {
-  return {
-    chars: text.length,
-    bytes: Buffer.byteLength(text, "utf8"),
-    preview: text.slice(0, 200),
-  };
-}
-
-function measureJsonSize(value: unknown): { chars: number; bytes: number } {
-  try {
-    const json = JSON.stringify(value);
-    return {
-      chars: json.length,
-      bytes: Buffer.byteLength(json, "utf8"),
-    };
-  } catch {
-    return { chars: -1, bytes: -1 };
-  }
-}
-
-function debugRequestSummary(params: {
-  stage: "initial" | "forced_retry" | "follow_up";
-  input: ResponseInput;
-  instructions?: string;
-  tools: unknown[];
-  previousResponseId?: string;
-  maxOutputTokens?: number;
-  temperature?: number;
-  timeoutMs: number;
-}): void {
-  const inputSize = measurePayloadSize(params.input);
-  const toolsSize = measureJsonSize(params.tools);
-  const instructionsSize =
-    typeof params.instructions === "string" ? measureTextSize(params.instructions) : undefined;
-
-  debugLog("[tool debug] lm request payload summary", {
-    stage: params.stage,
-    previousResponseId: params.previousResponseId ?? null,
-    maxOutputTokens: params.maxOutputTokens ?? null,
-    temperature: params.temperature ?? null,
-    timeoutMs: params.timeoutMs,
-    inputShape: inputSize.shape,
-    inputChars: inputSize.chars,
-    inputBytes: inputSize.bytes,
-    inputPreview: inputSize.preview,
-    instructionsChars: instructionsSize?.chars ?? null,
-    instructionsBytes: instructionsSize?.bytes ?? null,
-    instructionsPreview: instructionsSize?.preview ?? null,
-    toolsCount: params.tools.length,
-    toolsJsonChars: toolsSize.chars,
-    toolsJsonBytes: toolsSize.bytes,
+const webResearchHandler: ToolCallHandler = async ({ call, resolvedInput, fallbackQuery }) => {
+  const rawInput = resolvedInput.payload ?? "";
+  const normalized = normalizeWebResearchDigestCall({
+    fallbackQuery,
+    ...(resolvedInput.payload !== undefined ? { rawInput: resolvedInput.payload } : {}),
   });
-}
+  debugLog("[tool debug] normalized web_research_digest params", {
+    usedFallbackQuery: normalized.usedFallbackQuery,
+    inputSource: resolvedInput.source,
+    rawInputPreview: rawInput.slice(0, 300),
+    parsedQueryPreview: normalized.parsed.query.slice(0, 120),
+    queryPreview: normalized.params.query.slice(0, 120),
+    maxResults: normalized.params.maxResults,
+    maxPages: normalized.params.maxPages,
+  });
+  const output = await runWebResearchDigest(normalized.params);
+  const webCitationUrls = extractWebCitationUrls(output);
+  return {
+    output: asFunctionCallOutput(call, JSON.stringify(output)),
+    webCitationUrls,
+  };
+};
 
-function buildInitialResponseInput(input: ToolLoopInput): ResponseInput {
-  if (typeof input === "string") return input;
-  const text = input.text;
-  const imageUrls = (input.imageUrls ?? [])
-    .filter((url): url is string => typeof url === "string" && url.length > 0)
-    .slice(0, MAX_INPUT_IMAGE_URLS);
-  if (imageUrls.length === 0) return text;
+const assistantProfileHandler: ToolCallHandler = ({ call }) => {
+  const output = runAssistantProfile();
+  return { output: asFunctionCallOutput(call, JSON.stringify(output)) };
+};
 
-  const content = [
-    { type: "input_text", text },
-    ...imageUrls.map((url) => ({ type: "input_image", image_url: url })),
-  ];
-  return [{ role: "user", content }];
-}
+const staticToolHandlers: Record<string, ToolCallHandler> = {
+  [currentTimeTool.name]: currentTimeHandler,
+  [webResearchDigestTool.name]: webResearchHandler,
+  [assistantProfileTool.name]: assistantProfileHandler,
+};
 
-function collectFunctionCalls(response: ResponsesResponse): ResponseFunctionCall[] {
-  const out = response.output ?? [];
-  return out.filter((item): item is ResponseFunctionCall => item.type === "function_call");
-}
+const sevenDtdHandler: ToolCallHandler = async ({ call, resolvedInput, options }) => {
+  const sevenDtdInput = resolvedInput.payload;
+  const output = await runSevenDtdToolCall({
+    toolName: call.name as Parameters<typeof runSevenDtdToolCall>[0]["toolName"],
+    writeEnabled: options.sevenDtdWriteEnabled,
+    client: options.sevenDtdClient,
+    ...(options.requestContext ? { requestContext: options.requestContext } : {}),
+    ...(sevenDtdInput ? { rawInput: sevenDtdInput } : {}),
+  });
+  return { output: asFunctionCallOutput(call, output) };
+};
 
-function hasFunctionCall(response: ResponsesResponse, toolName: string): boolean {
-  return collectFunctionCalls(response).some((call) => call.name === toolName);
-}
-
-function resolveFunctionCallInput(call: ResponseFunctionCall): {
-  payload: string | undefined;
-  source: "input" | "arguments" | "none";
-} {
-  if (typeof call.input === "string" && call.input.length > 0) {
-    return { payload: call.input, source: "input" };
-  }
-  if (typeof call.arguments === "string" && call.arguments.length > 0) {
-    return { payload: call.arguments, source: "arguments" };
-  }
-  return { payload: undefined, source: "none" };
-}
+const unknownToolHandler: ToolCallHandler = ({ call }) => ({
+  output: asFunctionCallOutput(
+    call,
+    JSON.stringify({ errors: [{ code: "unknown_tool", message: call.name }] })
+  ),
+});
 
 async function executeCall(
   call: ResponseFunctionCall,
   fallbackQuery: string,
-  options: {
-    sevenDtdWriteEnabled: boolean;
-    sevenDtdClient: ReturnType<typeof createSevenDtdOpsClientFromEnv>;
-    requestContext?: RequestContext;
-  }
+  options: ExecuteCallOptions
 ): Promise<ExecuteCallResult> {
   const resolvedInput = resolveFunctionCallInput(call);
   debugLog("[tool debug] execute function_call", {
@@ -257,93 +162,14 @@ async function executeCall(
     inputSource: resolvedInput.source,
     inputPreview: (resolvedInput.payload ?? "").slice(0, 300),
   });
-
-  if (call.name === currentTimeTool.name) {
-    const params = parseCurrentTimeParams(resolvedInput.payload);
-    const output = formatCurrentTime(params);
-    return {
-      output: {
-        type: "function_call_output",
-        call_id: call.call_id ?? call.name,
-        output,
-      },
-    };
+  const staticHandler = staticToolHandlers[call.name];
+  if (staticHandler) {
+    return staticHandler({ call, resolvedInput, fallbackQuery, options });
   }
-
-  if (call.name === webResearchDigestTool.name) {
-    const rawInput = resolvedInput.payload ?? "";
-    const parsed = parseWebResearchDigestParams(resolvedInput.payload);
-    const params = normalizeWebResearchParams(parsed, fallbackQuery);
-    debugLog("[tool debug] normalized web_research_digest params", {
-      usedFallbackQuery: !parsed.query,
-      inputSource: resolvedInput.source,
-      rawInputPreview: rawInput.slice(0, 300),
-      parsedQueryPreview: parsed.query.slice(0, 120),
-      queryPreview: params.query.slice(0, 120),
-      maxResults: params.maxResults,
-      maxPages: params.maxPages,
-    });
-    const output = await runWebResearchDigest(params);
-    const webOutput = output as WebResearchDigestOutput;
-    const webCitationUrls = webOutput.citations
-      .map((citation) => citation.url)
-      .filter((url): url is string => typeof url === "string" && url.length > 0);
-    return {
-      output: {
-        type: "function_call_output",
-        call_id: call.call_id ?? call.name,
-        output: JSON.stringify(output),
-      },
-      webCitationUrls,
-    };
-  }
-
-  if (call.name === assistantProfileTool.name) {
-    const output = runAssistantProfile();
-    return {
-      output: {
-        type: "function_call_output",
-        call_id: call.call_id ?? call.name,
-        output: JSON.stringify(output),
-      },
-    };
-  }
-
   if (isSevenDtdToolName(call.name)) {
-    const sevenDtdInput = resolvedInput.payload;
-    const output = await runSevenDtdToolCall({
-      toolName: call.name,
-      writeEnabled: options.sevenDtdWriteEnabled,
-      client: options.sevenDtdClient,
-      ...(options.requestContext ? { requestContext: options.requestContext } : {}),
-      ...(sevenDtdInput ? { rawInput: sevenDtdInput } : {}),
-    });
-    return {
-      output: {
-        type: "function_call_output",
-        call_id: call.call_id ?? call.name,
-        output,
-      },
-    };
+    return sevenDtdHandler({ call, resolvedInput, fallbackQuery, options });
   }
-
-  return {
-    output: {
-      type: "function_call_output",
-      call_id: call.call_id ?? call.name,
-      output: JSON.stringify({ errors: [{ code: "unknown_tool", message: call.name }] }),
-    },
-  };
-}
-
-function appendCitationsIfNeeded(text: string, citationUrls: string[]): string {
-  if (citationUrls.length === 0) return text;
-  if (/https?:\/\/\S+/i.test(text)) return text;
-
-  const uniqueUrls = [...new Set(citationUrls)].slice(0, 5);
-  if (uniqueUrls.length === 0) return text;
-  const sources = uniqueUrls.map((url) => `- ${url}`).join("\n");
-  return `${text}\n\n参照元:\n${sources}`;
+  return unknownToolHandler({ call, resolvedInput, fallbackQuery, options });
 }
 
 export async function queryLmStudioResponseWithTools(
@@ -401,37 +227,23 @@ export async function queryLmStudioResponseWithTools(
   });
   logger.info("[tool_loop] initial response", requestContext, {
     "tool.call.name": "initial",
-    "tool.enabledTools": tools
-      .map((tool) => {
-        if (!tool || typeof tool !== "object") return "";
-        const name = (tool as { name?: unknown }).name;
-        return typeof name === "string" ? name : "";
-      })
-      .filter((name) => name.length > 0),
+    "tool.enabledTools": extractEnabledToolNames(tools),
   });
 
-  const mustRetryForWebResearch =
-    forceWebResearch && !hasFunctionCall(response, webResearchDigestTool.name);
-  const mustRetryForCurrentTime =
-    forceCurrentTime && !hasFunctionCall(response, currentTimeTool.name);
-  const mustRetryForAssistantProfile =
-    forceAssistantProfile && !hasFunctionCall(response, assistantProfileTool.name);
-  if (mustRetryForWebResearch || mustRetryForCurrentTime || mustRetryForAssistantProfile) {
-    const strictLines = [instructions];
-    if (mustRetryForWebResearch) {
-      strictLines.push("IMPORTANT: Do not answer directly before calling web_research_digest.");
-    }
-    if (mustRetryForCurrentTime) {
-      strictLines.push("IMPORTANT: Do not answer directly before calling current_time.");
-    }
-    if (mustRetryForAssistantProfile) {
-      strictLines.push("IMPORTANT: Do not answer directly before calling assistant_profile.");
-    }
-    const strictInstructions = strictLines.join("\n");
+  const forcedRetryPlan = buildForcedRetryPlan({
+    baseInstructions: instructions,
+    forceWebResearch,
+    forceCurrentTime,
+    forceAssistantProfile,
+    hasWebResearchCall: hasFunctionCall(response, webResearchDigestTool.name),
+    hasCurrentTimeCall: hasFunctionCall(response, currentTimeTool.name),
+    hasAssistantProfileCall: hasFunctionCall(response, assistantProfileTool.name),
+  });
+  if (forcedRetryPlan.mustRetry) {
     debugRequestSummary({
       stage: "forced_retry",
       input: initialInput,
-      instructions: strictInstructions,
+      instructions: forcedRetryPlan.strictInstructions,
       tools,
       maxOutputTokens: 700,
       temperature: 0.1,
@@ -440,16 +252,16 @@ export async function queryLmStudioResponseWithTools(
     response = await createResponse(lmConfig, initialInput, {
       temperature: 0.1,
       maxOutputTokens: 700,
-      instructions: strictInstructions,
+      instructions: forcedRetryPlan.strictInstructions,
       timeoutMs,
       tools,
     });
     debugLog("[tool debug] forced tool retry response", {
       responseId: response.id ?? null,
       outputTypes: (response.output ?? []).map((item) => item.type),
-      mustRetryForWebResearch,
-      mustRetryForCurrentTime,
-      mustRetryForAssistantProfile,
+      mustRetryForWebResearch: forcedRetryPlan.mustRetryForWebResearch,
+      mustRetryForCurrentTime: forcedRetryPlan.mustRetryForCurrentTime,
+      mustRetryForAssistantProfile: forcedRetryPlan.mustRetryForAssistantProfile,
     });
   }
   const webCitationUrls: string[] = [];
