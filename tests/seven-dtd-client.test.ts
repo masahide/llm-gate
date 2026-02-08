@@ -70,4 +70,60 @@ describe("seven-dtd client", () => {
     const client = createSevenDtdOpsClientFromEnv();
     await expect(client.getStatus()).resolves.toEqual({ ok: true, text: "plain body" });
   });
+
+  test("classifies fetch-level failures as seven_dtd_network_error", async () => {
+    const networkError = new TypeError("fetch failed");
+    (networkError as TypeError & { cause?: unknown }).cause = {
+      name: "Error",
+      code: "ECONNREFUSED",
+    };
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(networkError);
+
+    const client = createSevenDtdOpsClientFromEnv();
+    await expect(client.getStatus()).rejects.toThrow("seven_dtd_network_error:ECONNREFUSED");
+  });
+
+  test("uses /server paths and GET methods for 7dtd ops api", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const client = createSevenDtdOpsClientFromEnv();
+    await client.getStatus();
+    await client.getLogs({ lines: 77 });
+    await client.getSummary({ includePositions: false, timeoutSeconds: 5 });
+    await client.start();
+    await client.stop();
+    await client.restart();
+    await client.execCommand("version");
+
+    const requests = fetchMock.mock.calls.map((call) => {
+      const url = call[0] as string;
+      const init = call[1] as { method?: string } | undefined;
+      return { url, method: init?.method ?? "GET" };
+    });
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ url: "https://example.test/server/status", method: "GET" }),
+        expect.objectContaining({
+          url: "https://example.test/server/logs?lines=77",
+          method: "GET",
+        }),
+        expect.objectContaining({
+          url: expect.stringContaining("https://example.test/server/summary?"),
+          method: "GET",
+        }),
+        expect.objectContaining({ url: "https://example.test/server/start", method: "GET" }),
+        expect.objectContaining({ url: "https://example.test/server/stop", method: "GET" }),
+        expect.objectContaining({ url: "https://example.test/server/restart", method: "GET" }),
+        expect.objectContaining({
+          url: "https://example.test/server/command?command=version",
+          method: "GET",
+        }),
+      ])
+    );
+  });
 });

@@ -1,4 +1,6 @@
 import type { SevenDtdOpsClient } from "../seven-dtd/client.js";
+import type { RequestContext } from "../observability/request-context.js";
+import { buildToolErrorJson, buildToolSuccessJson } from "./tool-output.js";
 
 export const sevenDtdGetStatusTool = {
   type: "function" as const,
@@ -15,13 +17,29 @@ export const sevenDtdGetStatusTool = {
 export const sevenDtdGetSummaryTool = {
   type: "function" as const,
   name: "seven_dtd_get_summary",
-  description: "Get aggregated 7 Days to Die server summary for a time window.",
+  description: "Get aggregated 7 Days to Die server summary.",
   parameters: {
     type: "object",
     properties: {
-      minutes: {
+      includePositions: {
+        type: "boolean",
+        description: "Include entity positions in the summary.",
+      },
+      maskIPs: {
+        type: "boolean",
+        description: "Mask player IP addresses in the summary.",
+      },
+      limitHostiles: {
         type: "number",
-        description: "Summary window in minutes (1-1440).",
+        description: "Maximum hostile entries to include (0-2000).",
+      },
+      timeoutSeconds: {
+        type: "number",
+        description: "Upstream timeout in seconds (1-15).",
+      },
+      verbose: {
+        type: "boolean",
+        description: "Include verbose source diagnostics.",
       },
     },
     required: [],
@@ -125,12 +143,18 @@ function pickString(obj: Record<string, unknown>, key: string): string | undefin
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function buildError(code: string, message: string): string {
-  return JSON.stringify({ ok: false, error: { code, message } });
+function pickBoolean(obj: Record<string, unknown>, key: string): boolean | undefined {
+  const value = obj[key];
+  if (typeof value !== "boolean") return undefined;
+  return value;
 }
 
-function buildSuccess(data: unknown): string {
-  return JSON.stringify({ ok: true, data });
+function mapSevenDtdErrorCode(message: string): string {
+  if (message.startsWith("seven_dtd_")) {
+    const code = message.split(":")[0];
+    return code || "seven_dtd_api_error";
+  }
+  return "seven_dtd_api_error";
 }
 
 export type SevenDtdToolName =
@@ -159,49 +183,104 @@ export async function runSevenDtdToolCall(params: {
   rawInput?: string;
   writeEnabled: boolean;
   client: SevenDtdOpsClient;
+  requestContext?: RequestContext;
 }): Promise<string> {
+  const startedAt = Date.now();
   const input = asObject(params.rawInput);
+  const requestContextOption = params.requestContext
+    ? { requestContext: params.requestContext }
+    : {};
 
   try {
     if (params.toolName === "seven_dtd_get_status") {
-      return buildSuccess(await params.client.getStatus());
+      return buildToolSuccessJson(await params.client.getStatus(params.requestContext), {
+        startedAt,
+        ...requestContextOption,
+      });
     }
 
     if (params.toolName === "seven_dtd_get_summary") {
-      const minutes = pickNumber(input, "minutes");
-      return buildSuccess(
-        await params.client.getSummary(minutes === undefined ? undefined : { minutes })
+      const includePositions = pickBoolean(input, "includePositions");
+      const maskIPs = pickBoolean(input, "maskIPs");
+      const limitHostiles = pickNumber(input, "limitHostiles");
+      const timeoutSeconds = pickNumber(input, "timeoutSeconds");
+      const verbose = pickBoolean(input, "verbose");
+      return buildToolSuccessJson(
+        await params.client.getSummary(
+          {
+            ...(includePositions === undefined ? {} : { includePositions }),
+            ...(maskIPs === undefined ? {} : { maskIPs }),
+            ...(limitHostiles === undefined ? {} : { limitHostiles }),
+            ...(timeoutSeconds === undefined ? {} : { timeoutSeconds }),
+            ...(verbose === undefined ? {} : { verbose }),
+          },
+          params.requestContext
+        ),
+        {
+          startedAt,
+          ...requestContextOption,
+        }
       );
     }
 
     if (params.toolName === "seven_dtd_get_logs") {
       const lines = pickNumber(input, "lines");
-      return buildSuccess(await params.client.getLogs(lines === undefined ? undefined : { lines }));
+      return buildToolSuccessJson(
+        await params.client.getLogs(
+          lines === undefined ? undefined : { lines },
+          params.requestContext
+        ),
+        {
+          startedAt,
+          ...requestContextOption,
+        }
+      );
     }
 
     if (!params.writeEnabled) {
-      return buildError("seven_dtd_write_disabled", "Write tools are disabled.");
+      return buildToolErrorJson("seven_dtd_write_disabled", "Write tools are disabled.", {
+        startedAt,
+        ...requestContextOption,
+      });
     }
 
     if (params.toolName === "seven_dtd_start") {
-      return buildSuccess(await params.client.start());
+      return buildToolSuccessJson(await params.client.start(params.requestContext), {
+        startedAt,
+        ...requestContextOption,
+      });
     }
 
     if (params.toolName === "seven_dtd_stop") {
-      return buildSuccess(await params.client.stop());
+      return buildToolSuccessJson(await params.client.stop(params.requestContext), {
+        startedAt,
+        ...requestContextOption,
+      });
     }
 
     if (params.toolName === "seven_dtd_restart") {
-      return buildSuccess(await params.client.restart());
+      return buildToolSuccessJson(await params.client.restart(params.requestContext), {
+        startedAt,
+        ...requestContextOption,
+      });
     }
 
     const command = pickString(input, "command");
     if (!command) {
-      return buildError("seven_dtd_invalid_params", "command is required.");
+      return buildToolErrorJson("seven_dtd_invalid_params", "command is required.", {
+        startedAt,
+        ...requestContextOption,
+      });
     }
-    return buildSuccess(await params.client.execCommand(command));
+    return buildToolSuccessJson(await params.client.execCommand(command, params.requestContext), {
+      startedAt,
+      ...requestContextOption,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return buildError("seven_dtd_api_error", message.slice(0, 300));
+    return buildToolErrorJson(mapSevenDtdErrorCode(message), message.slice(0, 300), {
+      startedAt,
+      ...requestContextOption,
+    });
   }
 }

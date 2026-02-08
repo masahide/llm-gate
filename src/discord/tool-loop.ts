@@ -34,6 +34,8 @@ import {
   readSevenDtdWriteToolsEnabled,
 } from "../seven-dtd/client.js";
 import { isSevenDtdToolName, runSevenDtdToolCall } from "../tools/seven-dtd-ops.js";
+import type { RequestContext } from "../observability/request-context.js";
+import { logger } from "../observability/logger.js";
 
 type FunctionCallOutput = {
   type: "function_call_output";
@@ -244,6 +246,7 @@ async function executeCall(
   options: {
     sevenDtdWriteEnabled: boolean;
     sevenDtdClient: ReturnType<typeof createSevenDtdOpsClientFromEnv>;
+    requestContext?: RequestContext;
   }
 ): Promise<ExecuteCallResult> {
   const resolvedInput = resolveFunctionCallInput(call);
@@ -312,6 +315,7 @@ async function executeCall(
       toolName: call.name,
       writeEnabled: options.sevenDtdWriteEnabled,
       client: options.sevenDtdClient,
+      ...(options.requestContext ? { requestContext: options.requestContext } : {}),
       ...(sevenDtdInput ? { rawInput: sevenDtdInput } : {}),
     });
     return {
@@ -344,7 +348,8 @@ function appendCitationsIfNeeded(text: string, citationUrls: string[]): string {
 
 export async function queryLmStudioResponseWithTools(
   input: ToolLoopInput,
-  options: ToolLoopOptions = {}
+  options: ToolLoopOptions = {},
+  requestContext?: RequestContext
 ): Promise<string> {
   const lmConfig = options.lmConfig ?? cfg;
   const inputText = typeof input === "string" ? input : input.text;
@@ -393,6 +398,16 @@ export async function queryLmStudioResponseWithTools(
     forceWebResearch,
     forceCurrentTime,
     forceAssistantProfile,
+  });
+  logger.info("[tool_loop] initial response", requestContext, {
+    "tool.call.name": "initial",
+    "tool.enabledTools": tools
+      .map((tool) => {
+        if (!tool || typeof tool !== "object") return "";
+        const name = (tool as { name?: unknown }).name;
+        return typeof name === "string" ? name : "";
+      })
+      .filter((name) => name.length > 0),
   });
 
   const mustRetryForWebResearch =
@@ -457,11 +472,17 @@ export async function queryLmStudioResponseWithTools(
 
     const outputs: FunctionCallOutput[] = [];
     for (const call of calls) {
+      const callStartedAt = Date.now();
       const executed = await executeCall(call, latestUserInput, {
         sevenDtdWriteEnabled,
         sevenDtdClient,
+        ...(requestContext ? { requestContext } : {}),
       });
       outputs.push(executed.output);
+      logger.info("[tool_loop] function call executed", requestContext, {
+        "tool.call.name": call.name,
+        "tool.call.durationMs": Date.now() - callStartedAt,
+      });
       if (executed.webCitationUrls) {
         webCitationUrls.push(...executed.webCitationUrls);
       }

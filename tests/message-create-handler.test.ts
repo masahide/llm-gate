@@ -81,12 +81,25 @@ describe("handleMessageCreate", () => {
       startTypingLoop: () => stopTyping,
       buildTranscriptFromThread: vi.fn().mockResolvedValue("transcript"),
       queryLmStudioResponseWithTools: query,
+      requestContext: {
+        requestId: "req-1",
+        guildId: "g1",
+        effectiveChannelId: "c1",
+        threadId: "t1",
+        messageId: "m1",
+        persona: "default",
+        enabledTools: ["current_time"],
+      },
       buildReply: vi.fn(),
       buildLmErrorReply: vi.fn(),
       postReply,
     });
 
-    expect(query).toHaveBeenCalledWith("transcript");
+    expect(query).toHaveBeenCalledWith(
+      "transcript",
+      undefined,
+      expect.objectContaining({ requestId: "req-1" })
+    );
     expect(postReply).toHaveBeenCalledTimes(1);
     expect(stopTyping).toHaveBeenCalledTimes(1);
   });

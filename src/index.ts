@@ -13,6 +13,8 @@ import { buildTranscriptFromThread } from "./discord/thread-transcript.js";
 import { queryLmStudioResponseWithTools } from "./discord/tool-loop.js";
 import { getAssistantName, isAssistantDebugEnabled } from "./config/assistant.js";
 import { buildToolLoopOptionsForMessage } from "./discord/context-tools.js";
+import { buildRequestContext } from "./observability/request-context.js";
+import { logger } from "./observability/logger.js";
 
 const token = process.env.DISCORD_TOKEN;
 
@@ -41,6 +43,8 @@ client.on(Events.MessageCreate, async (msg) => {
   const botUserId = client.user?.id;
   if (!botUserId) return;
   const toolLoopOptions = buildToolLoopOptionsForMessage(msg);
+  const requestContext = buildRequestContext(msg, toolLoopOptions);
+  logger.info("[message_create] received", requestContext);
   await handleMessageCreate(msg, {
     botUserId,
     mentionLabel: mentionLabel(),
@@ -53,7 +57,12 @@ client.on(Events.MessageCreate, async (msg) => {
     startTypingLoop,
     buildTranscriptFromThread,
     queryLmStudioResponseWithTools: (input, options) =>
-      queryLmStudioResponseWithTools(input, { ...toolLoopOptions, ...(options ?? {}) }),
+      queryLmStudioResponseWithTools(
+        input,
+        { ...toolLoopOptions, ...(options ?? {}) },
+        requestContext
+      ),
+    requestContext,
     buildReply,
     buildLmErrorReply,
     postReply,

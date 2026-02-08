@@ -1,5 +1,7 @@
 import { extractImageAttachmentUrls } from "./message-utils.js";
 import type { ToolLoopOptions } from "./tool-loop.js";
+import type { RequestContext } from "../observability/request-context.js";
+import { logger } from "../observability/logger.js";
 
 type DecideInput = {
   isAuthorBot: boolean;
@@ -62,8 +64,10 @@ type HandleMessageCreateDeps = {
   ) => Promise<string>;
   queryLmStudioResponseWithTools: (
     input: LmInputPayload,
-    options?: ToolLoopOptions
+    options?: ToolLoopOptions,
+    requestContext?: RequestContext
   ) => Promise<string>;
+  requestContext?: RequestContext;
   buildReply: (body: string, mentionLabel: string) => string;
   buildLmErrorReply: (error: unknown) => string;
   postReply: (
@@ -125,6 +129,10 @@ export async function handleMessageCreate(
         messageId: msg.id,
         error,
       });
+      logger.warn("[message_create] failed to add reaction", deps.requestContext, {
+        "error.code": "react_failed",
+        "error.details": String(error),
+      });
     }
   }
 
@@ -150,7 +158,9 @@ export async function handleMessageCreate(
 
     let reply: string;
     try {
-      const lmReply = await deps.queryLmStudioResponseWithTools(lmInput);
+      const lmReply = deps.requestContext
+        ? await deps.queryLmStudioResponseWithTools(lmInput, undefined, deps.requestContext)
+        : await deps.queryLmStudioResponseWithTools(lmInput);
       reply = lmReply || deps.buildReply(body, deps.mentionLabel);
     } catch (error) {
       errorLog("[bot error] LM Studio への問い合わせに失敗しました", {
@@ -163,6 +173,10 @@ export async function handleMessageCreate(
         error,
       });
       reply = deps.buildLmErrorReply(error);
+      logger.error("[message_create] lm query failed", deps.requestContext, {
+        "error.code": "lm_query_failed",
+        "error.message": error instanceof Error ? error.message : String(error),
+      });
     }
 
     await deps.postReply(msg, {

@@ -23,7 +23,7 @@ describe("seven-dtd tools", () => {
       client,
     });
 
-    expect(client.getLogs).toHaveBeenCalledWith({ lines: 20 });
+    expect(client.getLogs).toHaveBeenCalledWith({ lines: 20 }, undefined);
     const parsed = JSON.parse(output) as { ok: boolean; data: { lines: string[] } };
     expect(parsed.ok).toBe(true);
     expect(parsed.data.lines).toEqual(["a", "b"]);
@@ -96,7 +96,7 @@ describe("seven-dtd tools", () => {
       error: { code: string; message: string };
     };
     expect(parsed.ok).toBe(false);
-    expect(parsed.error.code).toBe("seven_dtd_api_error");
+    expect(parsed.error.code).toBe("seven_dtd_missing_token");
     expect(parsed.error.message).toContain("seven_dtd_missing_token");
   });
 
@@ -116,7 +116,7 @@ describe("seven-dtd tools", () => {
       error: { code: string; message: string };
     };
     expect(parsed.ok).toBe(false);
-    expect(parsed.error.code).toBe("seven_dtd_api_error");
+    expect(parsed.error.code).toBe("seven_dtd_http_error");
     expect(parsed.error.message).toContain("seven_dtd_http_error:503");
   });
 
@@ -136,7 +136,7 @@ describe("seven-dtd tools", () => {
       error: { code: string; message: string };
     };
     expect(parsed.ok).toBe(false);
-    expect(parsed.error.code).toBe("seven_dtd_api_error");
+    expect(parsed.error.code).toBe("seven_dtd_timeout");
     expect(parsed.error.message).toContain("seven_dtd_timeout");
   });
 
@@ -158,5 +158,25 @@ describe("seven-dtd tools", () => {
     expect(parsed.ok).toBe(true);
     expect(parsed.data.ok).toBe(true);
     expect(parsed.data.text).toBe("plain body");
+  });
+
+  test("network error from 7dtd API is returned with seven_dtd_network_error code", async () => {
+    const client = createClientMock();
+    client.getStatus.mockRejectedValueOnce(new Error("seven_dtd_network_error:ECONNREFUSED"));
+
+    const output = await runSevenDtdToolCall({
+      toolName: "seven_dtd_get_status",
+      rawInput: "{}",
+      writeEnabled: false,
+      client,
+    });
+
+    const parsed = JSON.parse(output) as {
+      ok: boolean;
+      error: { code: string; message: string };
+    };
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error.code).toBe("seven_dtd_network_error");
+    expect(parsed.error.message).toContain("ECONNREFUSED");
   });
 });
